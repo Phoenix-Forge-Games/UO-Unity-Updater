@@ -17,6 +17,13 @@ are in `keys/` and compiled into every GameUpdater.
 | `updater` | `%USERPROFILE%\.uo-unity-updater\keys\updater.pem` and the repo secret `UPDATER_SIGNING_KEY` | `keys/updater.pub` |
 | `patch` | `%USERPROFILE%\.uo-unity-updater\keys\patch.pem` (build PC only; never on a server or in CI) | `keys/patch.pub` |
 
+Set or replace the repo secret from bash, using a plain file redirect. Piping the key from Windows
+PowerShell 5.1 mangles it.
+
+```bash
+gh secret set UPDATER_SIGNING_KEY --repo Phoenix-Forge-Games/UO-Unity-Updater < ~/.uo-unity-updater/keys/updater.pem
+```
+
 **Back up both `.pem` files** somewhere offline, such as a password manager. Losing a key means you
 can't publish anything installed updaters will accept. Recovering from that means shipping a new
 GameUpdater that trusts a new key, by hand.
