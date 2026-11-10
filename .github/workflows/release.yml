@@ -1,0 +1,69 @@
+name: release
+
+# Push a tag like v1.2.3 to build, test, sign and publish a release.
+# Installed GameUpdaters pick it up through .../releases/latest/download/updater.json.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Version from tag
+        shell: pwsh
+        run: |
+          $tag = '${{ github.ref_name }}'
+          if ($tag -notmatch '^v\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$') { throw "Tag '$tag' is not v<major>.<minor>.<patch>[-prerelease]" }
+          "VERSION=$($tag.Substring(1))" >> $env:GITHUB_ENV
+
+      - name: Check signing key secret
+        shell: pwsh
+        env:
+          UPDATER_SIGNING_KEY: ${{ secrets.UPDATER_SIGNING_KEY }}
+        run: if (-not $env:UPDATER_SIGNING_KEY) { throw "Repository secret UPDATER_SIGNING_KEY is not set (see docs/release-flow.md)." }
+
+      - name: End-to-end test
+        shell: pwsh
+        run: ./tests/e2e.ps1
+
+      - name: Publish GameUpdater (self-contained single exe)
+        run: dotnet publish src/GameUpdater/GameUpdater.csproj -c Release -p:Version=${{ env.VERSION }} -o out/updater
+
+      - name: Publish patchtool (win-x64, linux-x64)
+        shell: pwsh
+        run: |
+          foreach ($rid in 'win-x64', 'linux-x64') {
+            dotnet publish src/PatchTool/PatchTool.csproj -c Release -r $rid --self-contained -p:PublishSingleFile=true -p:Version=$env:VERSION -o "out/patchtool-$rid"
+            if ($LASTEXITCODE) { throw "patchtool $rid publish failed" }
+            Compress-Archive -Path "out/patchtool-$rid/*" -DestinationPath "out/patchtool-$rid.zip"
+          }
+
+      - name: Sign updater.json
+        shell: pwsh
+        env:
+          UPDATER_SIGNING_KEY: ${{ secrets.UPDATER_SIGNING_KEY }}
+        run: |
+          $url = "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/GameUpdater.exe"
+          ./out/patchtool-win-x64/patchtool.exe updater-release --exe out/updater/GameUpdater.exe --version $env:VERSION --url $url --key env:UPDATER_SIGNING_KEY --out out/feed
+          if ($LASTEXITCODE) { throw "signing failed" }
+
+      - name: Create GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $pre = if ($env:VERSION.Contains('-')) { '--prerelease' } else { '--latest' }
+          gh release create '${{ github.ref_name }}' `
+            out/updater/GameUpdater.exe out/feed/updater.json out/feed/updater.json.sig `
+            out/patchtool-win-x64.zip out/patchtool-linux-x64.zip `
+            --title "GameUpdater ${{ env.VERSION }}" --generate-notes $pre

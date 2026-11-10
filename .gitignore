@@ -1,0 +1,18 @@
+bin/
+obj/
+out/
+artifacts/
+.vs/
+.idea/
+*.user
+*.suo
+
+# Never commit private signing keys. Only *.pub files belong in keys/.
+*.pem
+*.key
+keys/*
+!keys/*.pub
+!keys/README.md
+
+# Local test output
+tests/.work/

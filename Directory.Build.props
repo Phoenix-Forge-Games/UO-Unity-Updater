@@ -1,0 +1,16 @@
+﻿<Project>
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <!-- CI passes -p:Version=1.2.3 from the git tag. Local builds are "dev" builds and never self-update. -->
+    <Version Condition="'$(Version)' == ''">0.0.0-dev</Version>
+    <Company>Phoenix Forge Games</Company>
+    <Product>UO Unity Updater</Product>
+    <Copyright>Phoenix Forge Games</Copyright>
+    <Deterministic>true</Deterministic>
+    <DebugType>embedded</DebugType>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+</Project>

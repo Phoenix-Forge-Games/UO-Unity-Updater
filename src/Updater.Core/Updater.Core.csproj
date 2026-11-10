@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Updater.Core</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Public keys the updater trusts. Private keys never live in the repo. -->
+    <EmbeddedResource Include="..\..\keys\*.pub" LogicalName="keys/%(Filename)%(Extension)" />
+  </ItemGroup>
+</Project>

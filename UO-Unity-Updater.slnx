@@ -1,0 +1,7 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/GameUpdater/GameUpdater.csproj" />
+    <Project Path="src/PatchTool/PatchTool.csproj" />
+    <Project Path="src/Updater.Core/Updater.Core.csproj" />
+  </Folder>
+</Solution>
