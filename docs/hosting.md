@@ -11,10 +11,21 @@ The client doesn't care where files live. `channelUrl` can be any `http://`, `ht
 `file://` URL, so moving the patch host later only means changing `Defaults.ChannelUrl` (or a
 player's `GameUpdater.json`) and releasing an updater.
 
-## Game patches on phoenix-server: what's still to set up
+## Game patches on phoenix-server
 
-None of this has been done yet. Each step changes the server or the network, so each one is yours to
-approve, and the firewall and router steps are yours to do.
+Set up on 2026-11-11:
+
+- **Web server:** IIS, site `Patches`, serving `C:\GameServers\Patches` read-only on TCP 7780.
+  - Its `web.config` maps extensionless files, `.gz` and `.sig` to `application/octet-stream`, and turns directory
+    browsing off.
+  - The IIS accounts (IIS_IUSRS, IUSR) can only read the folder.
+- **Upload:** to the share `\phoenix-server\GameServers\Patches`.
+- **Public URL:** `http://seriousfun.tplinkdns.com:7780/live/channel.json`. It's the default `ChannelUrl` since v0.2.0.
+- **Your part:**
+  - a firewall rule for TCP 7780 (the command is at the end of this page);
+  - Deco port forwards for TCP 7780 and UDP 7770 (the game).
+
+The original checklist follows, for reference.
 
 1. **Folder and share.** Create a folder such as `C:\GameServers\Patches`. Share it to your own
    account as `\\phoenix-server\Patches` so `tools/deploy-patches.ps1` can upload to it from the
@@ -49,10 +60,10 @@ Upload bandwidth: a first install downloads the whole game from your home connec
 small. If first installs get too slow, move `blobs/` to a CDN or object storage (for example
 Cloudflare R2), set `blobBase` to that absolute URL, and keep `channel.json` at home.
 
-## Firewall command (for you to run, if you pick port 443)
+## Firewall command (for you to run)
 
 ```powershell
-New-NetFirewallRule -DisplayName "Game patches (HTTPS)" -Direction Inbound -Protocol TCP -LocalPort 443 -Action Allow -Profile Any
+New-NetFirewallRule -DisplayName "Game patches (HTTP 7780)" -Direction Inbound -Protocol TCP -LocalPort 7780 -Action Allow -Profile Any
 ```
 
 Run it on phoenix-server as administrator.

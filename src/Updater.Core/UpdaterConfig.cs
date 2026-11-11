@@ -37,9 +37,9 @@ public sealed class UpdaterConfig
 
 public static class Defaults
 {
-    public const string GameName = "UO Unity Client";
-    // Game patches live on phoenix-server (hybrid hosting). Set once the host's public URL exists.
-    public const string ChannelUrl = "";
+    public const string GameName = "SeriousFun";
+    // Game patches live on phoenix-server (hybrid hosting): IIS serving the patch mirror on port 7780.
+    public const string ChannelUrl = "http://seriousfun.tplinkdns.com:7780/live/channel.json";
     // Updater releases come from GitHub Releases; "latest/download" always points at the newest release.
     public const string UpdaterFeedUrl = "https://github.com/Phoenix-Forge-Games/UO-Unity-Updater/releases/latest/download/updater.json";
 }
