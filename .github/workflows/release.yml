@@ -1,7 +1,7 @@
 name: release
 
 # Push a tag like v1.2.3 to build, test, sign and publish a release.
-# Installed GameUpdaters pick it up through .../releases/latest/download/updater.json.
+# Installed launchers (BritanniaReborn.exe, GameUpdater.exe before v0.3.0) pick it up through .../releases/latest/download/updater.json.
 on:
   push:
     tags: ['v*']
@@ -36,7 +36,7 @@ jobs:
         shell: pwsh
         run: ./tests/e2e.ps1
 
-      - name: Publish GameUpdater (self-contained single exe)
+      - name: Publish the launcher, BritanniaReborn.exe (self-contained single exe)
         run: dotnet publish src/GameUpdater/GameUpdater.csproj -c Release -p:Version=${{ env.VERSION }} -o out/updater
 
       - name: Publish patchtool (win-x64, linux-x64)
@@ -53,8 +53,8 @@ jobs:
         env:
           UPDATER_SIGNING_KEY: ${{ secrets.UPDATER_SIGNING_KEY }}
         run: |
-          $url = "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/GameUpdater.exe"
-          ./out/patchtool-win-x64/patchtool.exe updater-release --exe out/updater/GameUpdater.exe --version $env:VERSION --url $url --key env:UPDATER_SIGNING_KEY --out out/feed
+          $url = "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/BritanniaReborn.exe"
+          ./out/patchtool-win-x64/patchtool.exe updater-release --exe out/updater/BritanniaReborn.exe --version $env:VERSION --url $url --key env:UPDATER_SIGNING_KEY --out out/feed
           if ($LASTEXITCODE) { throw "signing failed" }
 
       - name: Create GitHub release
@@ -64,6 +64,6 @@ jobs:
         run: |
           $pre = if ($env:VERSION.Contains('-')) { '--prerelease' } else { '--latest' }
           gh release create '${{ github.ref_name }}' `
-            out/updater/GameUpdater.exe out/feed/updater.json out/feed/updater.json.sig `
+            out/updater/BritanniaReborn.exe out/feed/updater.json out/feed/updater.json.sig `
             out/patchtool-win-x64.zip out/patchtool-linux-x64.zip `
-            --title "GameUpdater ${{ env.VERSION }}" --generate-notes $pre
+            --title "Britannia Reborn Launcher ${{ env.VERSION }}" --generate-notes $pre

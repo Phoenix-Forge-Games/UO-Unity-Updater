@@ -11,7 +11,7 @@ The updater and patch tooling for the UO Unity game (`Phoenix-Forge-Games/UO-Uni
 - **Everything is verified.** The channel file is signed with ECDSA P-256. It pins the manifest's
   hash, and the manifest pins every blob's hash. Nothing is installed unless its bytes match. Files
   are staged first and swapped in together, and the swap rolls back if it fails.
-- **The updater updates itself.** `GameUpdater.exe` reads a signed `updater.json` from this repo's
+- **The updater updates itself.** `BritanniaReborn.exe` reads a signed `updater.json` from this repo's
   latest GitHub release. When it finds a newer version, it downloads it, checks the hash, swaps the exe
   and restarts. Players never do anything by hand.
 
@@ -20,7 +20,7 @@ The updater and patch tooling for the UO Unity game (`Phoenix-Forge-Games/UO-Uni
 | Path | What |
 |---|---|
 | `src/Updater.Core` | Manifest format, chunker, signing, publisher, patch client, self-updater |
-| `src/GameUpdater` | The player-facing Windows app: a small window, or `--headless` |
+| `src/GameUpdater` | The player-facing Windows app, the Britannia Reborn launcher (`BritanniaReborn.exe`; `GameUpdater.exe` before v0.3.0): a small window, or `--headless` |
 | `src/PatchTool` | `patchtool` CLI: `publish`, `sync`, `updater-release`, `prune`, `rollback`, `keygen`, `serve` |
 | `tests/e2e.ps1` | End-to-end test, also run in CI (see below) |
 | `keys/*.pub` | Trusted public keys, compiled into the updater. Private keys are never committed. |
@@ -30,8 +30,8 @@ The updater and patch tooling for the UO Unity game (`Phoenix-Forge-Games/UO-Uni
 
 ```
 <anywhere>\
-  GameUpdater.exe        <- the only thing a player downloads
-  GameUpdater.json       <- optional overrides (channel URL, install folder)
+  BritanniaReborn.exe        <- the only thing a player downloads
+  BritanniaReborn.json       <- optional overrides (channel URL, install folder)
   Game\                  <- managed by the updater
     UOClient.exe, UOClient_Data\..., Content\...
     .patch\              <- updater state (installed manifest, download cache)
@@ -68,7 +68,7 @@ The e2e test publishes three synthetic builds to a local HTTP host and checks th
 ## Releases
 
 - **Updater:** push a tag `vX.Y.Z`. [`release.yml`](.github/workflows/release.yml) tests, builds and signs it,
-  then publishes `GameUpdater.exe`, `updater.json` and `updater.json.sig`, plus `patchtool` for
+  then publishes `BritanniaReborn.exe`, `updater.json` and `updater.json.sig`, plus `patchtool` for
   win-x64 and linux-x64. See [docs/release-flow.md](docs/release-flow.md).
 - **Game patches:** `patchtool publish` into a local mirror of the patch host, then upload the new files.
   See [docs/release-flow.md](docs/release-flow.md) and [docs/hosting.md](docs/hosting.md).

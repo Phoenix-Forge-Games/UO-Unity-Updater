@@ -3,7 +3,10 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
     <UseWindowsForms>true</UseWindowsForms>
-    <AssemblyName>GameUpdater</AssemblyName>
+    <!-- The player-facing launcher of Britannia Reborn: BritanniaReborn.exe (it was GameUpdater.exe before v0.3.0). -->
+    <AssemblyName>BritanniaReborn</AssemblyName>
+    <Product>Britannia Reborn</Product>
+    <AssemblyTitle>Britannia Reborn Launcher</AssemblyTitle>
     <RootNamespace>GameUpdater</RootNamespace>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <ApplicationManifest>app.manifest</ApplicationManifest>

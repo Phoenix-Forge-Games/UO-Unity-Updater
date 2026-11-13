@@ -37,7 +37,7 @@ internal static class Program
                 Console.Error.WriteLine("error: " + ex.Message);
                 if (logFile != null) File.AppendAllText(logFile, "ERROR: " + ex.Message + Environment.NewLine);
             }
-            else MessageBox.Show(ex.Message, "GameUpdater", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            else MessageBox.Show(ex.Message, Defaults.GameName + " Launcher", MessageBoxButtons.OK, MessageBoxIcon.Error);
             return 2;
         }
 
@@ -75,7 +75,7 @@ internal static class Program
         if (error != null)
         {
             if (logFile != null) File.AppendAllText(logFile, "Self-update failed: " + error + Environment.NewLine);
-            if (!headless) MessageBox.Show("Updating the updater failed:\n" + error + "\n\nThe previous version will start instead.", "GameUpdater", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            if (!headless) MessageBox.Show("Updating the updater failed:\n" + error + "\n\nThe previous version will start instead.", Defaults.GameName + " Launcher", MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
         // Start the (new or, on failure, old) updater; it deletes this staged copy on startup.
         var psi = new System.Diagnostics.ProcessStartInfo(target) { UseShellExecute = false, WorkingDirectory = Path.GetDirectoryName(target)! };

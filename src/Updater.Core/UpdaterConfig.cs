@@ -1,12 +1,15 @@
 namespace Updater.Core;
 
 /// <summary>
-/// Settings for GameUpdater.exe. Defaults are compiled in; an optional GameUpdater.json next to the
-/// executable overrides them (handy for testing or pointing at another channel).
+/// Settings for the launcher (BritanniaReborn.exe). Defaults are compiled in; an optional BritanniaReborn.json next
+/// to the executable overrides them (handy for testing or pointing at another channel). A GameUpdater.json from
+/// before the rename is still read when there's no new one.
 /// </summary>
 public sealed class UpdaterConfig
 {
-    public const string FileName = "GameUpdater.json";
+    public const string FileName = "BritanniaReborn.json";
+    /// <summary>The settings file's name before the launcher was renamed (v0.2.0 and earlier).</summary>
+    public const string LegacyFileName = "GameUpdater.json";
 
     /// <summary>Shown in the window title.</summary>
     public string GameName { get; set; } = Defaults.GameName;
@@ -25,8 +28,13 @@ public sealed class UpdaterConfig
 
     public static UpdaterConfig Load(string exeDir)
     {
-        var p = Path.Combine(exeDir, FileName);
-        return File.Exists(p) ? Json.Deserialize<UpdaterConfig>(File.ReadAllBytes(p), FileName) : new UpdaterConfig();
+        foreach (var name in new[] { FileName, LegacyFileName })
+        {
+            var p = Path.Combine(exeDir, name);
+            if (File.Exists(p)) return Json.Deserialize<UpdaterConfig>(File.ReadAllBytes(p), name);
+        }
+
+        return new UpdaterConfig();
     }
 
     public string ResolveInstallDir(string exeDir) => Path.GetFullPath(Path.Combine(exeDir, InstallDir));
@@ -37,7 +45,7 @@ public sealed class UpdaterConfig
 
 public static class Defaults
 {
-    public const string GameName = "SeriousFun";
+    public const string GameName = "Britannia Reborn";
     // Game patches live on phoenix-server (hybrid hosting): IIS serving the patch mirror on port 7780.
     public const string ChannelUrl = "http://seriousfun.tplinkdns.com:7780/live/channel.json";
     // Updater releases come from GitHub Releases; "latest/download" always points at the newest release.

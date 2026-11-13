@@ -4,12 +4,12 @@ Decided on 2026-11-09: **hybrid hosting**.
 
 | What | Host | Why |
 |---|---|---|
-| GameUpdater releases (`GameUpdater.exe`, `updater.json`) | GitHub Releases on the public `Phoenix-Forge-Games/UO-Unity-Updater` | Free CDN, always up, and no paid content in it |
+| GameUpdater releases (`BritanniaReborn.exe`, `updater.json`) | GitHub Releases on the public `Phoenix-Forge-Games/UO-Unity-Updater` | Free CDN, always up, and no paid content in it |
 | Game patches (`blobs/`, `<channel>/…`) | phoenix-server | Private and under your control. The built game contains (encrypted) paid art, which shouldn't sit on a public GitHub repo. |
 
 The client doesn't care where files live. `channelUrl` can be any `http://`, `https://` or
 `file://` URL, so moving the patch host later only means changing `Defaults.ChannelUrl` (or a
-player's `GameUpdater.json`) and releasing an updater.
+player's `BritanniaReborn.json`) and releasing an updater.
 
 ## Game patches on phoenix-server
 
@@ -54,7 +54,7 @@ The original checklist follows, for reference.
    - Put the public URL (for example `https://patch.example.net/live/channel.json`) in
      `src/Updater.Core/UpdaterConfig.cs` → `Defaults.ChannelUrl`.
    - Tag an updater release. Installed updaters update themselves and start using it.
-   - Until then, testers can set `channelUrl` in `GameUpdater.json`.
+   - Until then, testers can set `channelUrl` in `BritanniaReborn.json`.
 
 Upload bandwidth: a first install downloads the whole game from your home connection. Patches are
 small. If first installs get too slow, move `blobs/` to a CDN or object storage (for example

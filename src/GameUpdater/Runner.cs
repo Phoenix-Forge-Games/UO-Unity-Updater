@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using Updater.Core;
 
 namespace GameUpdater;
@@ -23,10 +23,10 @@ internal sealed class Runner(UpdaterConfig config, string exePath, IUpdaterUi ui
 
     public async Task<RunOutcome> RunAsync(RunOptions o, CancellationToken ct)
     {
-        using var http = Fetcher.CreateHttpClient($"GameUpdater/{Signing.CurrentVersion()}");
+        using var http = Fetcher.CreateHttpClient($"BritanniaReborn/{Signing.CurrentVersion()}");
         var fetcher = new Fetcher(http);
         var current = Signing.CurrentVersion();
-        ui.Log($"GameUpdater {current}");
+        ui.Log($"Britannia Reborn launcher {current}");
 
         if (o.SelfUpdate && config.SelfUpdate && !string.IsNullOrEmpty(config.UpdaterFeedUrl))
         {
