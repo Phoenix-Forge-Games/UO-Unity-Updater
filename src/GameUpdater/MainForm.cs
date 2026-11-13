@@ -9,6 +9,8 @@ namespace GameUpdater;
 /// The launcher window: a borderless, owner-drawn fantasy frame with the game name, a status line, a progress
 /// bar, Play and Verify buttons and a fold-away log. The look comes from a <see cref="LauncherTheme"/>: the
 /// built-in one, or the skin in LauncherSkin.pak when the installed game has one (see docs/launcher-skin.md).
+/// On first run (no game and no saved choice) it shows where the game will go, with a way to pick another
+/// folder, before downloading anything; "Change install folder" moves the game later.
 /// </summary>
 internal sealed class MainForm : Form, IUpdaterUi
 {
@@ -36,6 +38,8 @@ internal sealed class MainForm : Form, IUpdaterUi
     private readonly Widget _play = new("Play") { Enabled = false };
     private readonly Widget _verify = new("Verify files") { Enabled = false };
     private readonly Widget _details = new("Show details");
+    private readonly Widget _folder = new("Change install folder");
+    private readonly Widget _change = new("Change...") { Visible = false };
     private readonly Widget _minimize = new("Minimize");
     private readonly Widget _close = new("Close");
     private readonly Widget[] _widgets;
@@ -49,19 +53,33 @@ internal sealed class MainForm : Form, IUpdaterUi
     private bool _showProgress;
     private CancellationTokenSource _cts = new();
     private bool _busy;
+    private readonly ToolTip _tip = new();
+
+    // First-run setup: where the game will go, before anything is downloaded.
+    private bool _setup;
+    private string _target;
+    private long? _need;
+    private bool _sizing;
+    private string? _problem, _note;
+    private Rectangle _card, _pathBox, _spaceLine, _noteLine, _cardTitle;
 
     private float S => DeviceDpi / 96f;
     private Rectangle _titleArea, _crestArea, _dividerArea, _panel, _statusArea, _bar, _logArea;
-    private Font _titleFont = null!, _statusFont = null!, _buttonFont = null!, _smallButtonFont = null!, _smallFont = null!, _logFont = null!;
+    private Font _titleFont = null!, _statusFont = null!, _buttonFont = null!, _smallButtonFont = null!, _smallFont = null!, _logFont = null!, _headingFont = null!, _pathFont = null!;
 
-    public MainForm(UpdaterConfig config, string exePath, RunOptions opts, bool autoLaunch)
+    public MainForm(UpdaterConfig config, string exePath, RunOptions opts, bool autoLaunch, InstallLocation.Resolved location)
     {
         _config = config;
         _opts = opts;
         _autoLaunch = autoLaunch;
-        _runner = new Runner(config, exePath, this);
+        _runner = new Runner(config, exePath, this, location.Dir);
         _skinOverride = ArgValue(opts.OriginalArgs, "--skin");
-        _widgets = [_play, _verify, _details, _minimize, _close];
+        _widgets = [_play, _verify, _details, _folder, _change, _minimize, _close];
+        _target = location.Dir;
+        _setup = !location.Chosen && !opts.SelfUpdateOnly;
+        _change.Visible = _setup;
+        _folder.Visible = !_setup;
+        _verify.Visible = !_setup;
 
         Text = $"{config.GameName} Launcher {_version}";
         FormBorderStyle = FormBorderStyle.None;
@@ -77,6 +95,8 @@ internal sealed class MainForm : Form, IUpdaterUi
         _play.Click = Play;
         _verify.Click = async () => await RunUpdate(_opts with { SelfUpdate = false, Verify = true });
         _details.Click = () => ShowLog(!_log.Visible);
+        _folder.Click = async () => await ChangeFolder();
+        _change.Click = PickSetupFolder;
         _minimize.Click = () => WindowState = FormWindowState.Minimized;
         _close.Click = Close;
 
@@ -87,7 +107,8 @@ internal sealed class MainForm : Form, IUpdaterUi
         {
             Invalidate(); Update(); // repaint everything once the final size is settled, before the update starts
             if (SelfTest) { RunSelfTest(); return; }
-            await RunUpdate(_opts);
+            if (_setup) await StartSetup();
+            else await RunUpdate(_opts);
         };
         FormClosing += (_, e) =>
         {
@@ -123,7 +144,7 @@ internal sealed class MainForm : Form, IUpdaterUi
     private async Task RunUpdate(RunOptions o)
     {
         _busy = true;
-        SetEnabled(_play, false); SetEnabled(_verify, false);
+        SetEnabled(_play, false); SetEnabled(_verify, false); SetEnabled(_folder, false);
         _cts = new CancellationTokenSource();
         RunOutcome outcome;
         try { outcome = await _runner.RunAsync(o, _cts.Token); }
@@ -142,6 +163,7 @@ internal sealed class MainForm : Form, IUpdaterUi
         _showProgress = outcome == RunOutcome.Ready && _fraction > 0;
         SetEnabled(_verify, outcome != RunOutcome.NotConfigured);
         SetEnabled(_play, outcome == RunOutcome.Ready);
+        SetEnabled(_folder, true);
         Invalidate();
         if (outcome == RunOutcome.Ready && _autoLaunch) Play();
     }
@@ -149,7 +171,162 @@ internal sealed class MainForm : Form, IUpdaterUi
     private void Play()
     {
         if (!_play.Enabled) return;
+        if (_setup) { _ = Install(); return; }
         if (_runner.Launch() && _config.CloseOnLaunch) Close();
+    }
+
+    // ---- install location ----
+
+    private string ExeDir => _runner.ExeDir;
+
+    /// <summary>First run: update the launcher itself, size up the game, then wait for the player to press Install.</summary>
+    private async Task StartSetup()
+    {
+        _busy = true;
+        _sizing = true;
+        RefreshTarget();
+        try
+        {
+            var outcome = await _runner.RunAsync(_opts with { SelfUpdateOnly = true }, _cts.Token);
+            if (outcome == RunOutcome.Restarting) { Close(); return; }
+            Status("Checking the size of the game...");
+            var manifest = await _runner.PeekRemoteAsync(_cts.Token);
+            _need = manifest != null ? InstallLocation.SpaceNeeded(manifest) : null;
+        }
+        catch (OperationCanceledException) { return; }
+        finally { _busy = false; _sizing = false; }
+        if (!_setup) return;
+        Status("Choose a folder for the game, then press Install.");
+        RefreshTarget();
+    }
+
+    private void RefreshTarget()
+    {
+        _problem = InstallLocation.Problem(_target, ExeDir);
+        _note = null;
+        var free = InstallLocation.FreeSpace(_target);
+        if (_problem == null && _need is { } need && free is { } f && f < need)
+            _problem = $"Not enough space on {DriveName(_target)}: needs {PatchPublisher.Fmt(need)}, {PatchPublisher.Fmt(f)} free.";
+        if (_problem == null && InstallLocation.HasInstall(_target))
+            _note = "The game is already here. It will be checked and brought up to date.";
+        else if (_problem == null)
+            _note = "The launcher remembers this folder. You can move the game later.";
+        SetEnabled(_play, _problem == null && !_busy);
+        Invalidate();
+    }
+
+    private string SpaceText()
+    {
+        var free = InstallLocation.FreeSpace(_target);
+        var need = _need is { } n ? $"Needs about {PatchPublisher.Fmt(n)}" : _sizing ? "Checking the size of the game..." : "Size unknown (are you offline?)";
+        return free is { } f ? $"{need}   \u00b7   {PatchPublisher.Fmt(f)} free on {DriveName(_target)}" : need;
+    }
+
+    private static string DriveName(string dir) => (Path.GetPathRoot(Path.GetFullPath(dir)) ?? dir).TrimEnd('\\');
+
+    private string? PickFolder(string title, string start)
+    {
+        var initial = start;
+        while (!Directory.Exists(initial) && Path.GetDirectoryName(initial) is { } up) initial = up;
+        using var dlg = new FolderBrowserDialog
+        {
+            Description = title, UseDescriptionForTitle = true, ShowNewFolderButton = true,
+            InitialDirectory = Directory.Exists(initial) ? initial : "",
+        };
+        return dlg.ShowDialog(this) == DialogResult.OK && !string.IsNullOrEmpty(dlg.SelectedPath) ? dlg.SelectedPath : null;
+    }
+
+    private void PickSetupFolder()
+    {
+        var parent = Path.GetDirectoryName(_target) ?? _target;
+        if (PickFolder($"Choose where to install {_config.GameName}", parent) is not { } picked) return;
+        _target = InstallLocation.TargetFor(picked);
+        RefreshTarget();
+    }
+
+    /// <summary>Saves the chosen folder and installs there.</summary>
+    private async Task Install()
+    {
+        RefreshTarget();
+        if (_problem != null || _busy) return;
+        try
+        {
+            Directory.CreateDirectory(_target);
+            Log($"Install folder saved ({InstallLocation.Save(ExeDir, _target)}).");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _problem = $"Can't use that folder: {ex.Message}";
+            SetEnabled(_play, false);
+            Invalidate();
+            return;
+        }
+        _runner.InstallDir = _target;
+        _setup = false;
+        _change.Visible = false;
+        _folder.Visible = true;
+        _verify.Visible = true;
+        Invalidate();
+        await RunUpdate(_opts with { SelfUpdate = false }); // the launcher was already updated before the setup screen
+    }
+
+    /// <summary>Later runs: move the game to another folder (or switch to a copy already there).</summary>
+    private async Task ChangeFolder()
+    {
+        if (_busy) return;
+        var current = _runner.InstallDir;
+        if (PickFolder($"Choose a new folder for {_config.GameName}", Path.GetDirectoryName(current) ?? current) is not { } picked) return;
+        var target = InstallLocation.TargetFor(picked);
+        if (string.Equals(Path.GetFullPath(target).TrimEnd('\\'), Path.GetFullPath(current).TrimEnd('\\'), StringComparison.OrdinalIgnoreCase)) return;
+        if (InstallLocation.Problem(target, ExeDir) is { } problem)
+        {
+            MessageBox.Show(this, problem, Text, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        if (InstallLocation.HasInstall(target))
+        {
+            if (MessageBox.Show(this, $"{_config.GameName} is already installed in\n{target}\n\nUse that copy? The copy in\n{current}\nstays where it is; delete it yourself if you don't need it.",
+                    Text, MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
+            InstallLocation.Save(ExeDir, target);
+            _runner.InstallDir = target;
+            Log($"Game folder changed to {target}.");
+            await RunUpdate(_opts with { SelfUpdate = false });
+            return;
+        }
+
+        var hasGame = Directory.Exists(current) && Directory.EnumerateFileSystemEntries(current).Any();
+        if (hasGame && MessageBox.Show(this, $"Move {_config.GameName} from\n{current}\nto\n{target}?\n\nClose the game first. If anything goes wrong, the game stays where it is now.",
+                Text, MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK) return;
+
+        _busy = true;
+        SetEnabled(_play, false); SetEnabled(_verify, false); SetEnabled(_folder, false);
+        _cts = new CancellationTokenSource();
+        _fraction = 0;
+        Status(hasGame ? "Moving the game..." : "Changing the game folder...");
+        try
+        {
+            var warning = await InstallMover.MoveAsync(current, target, () =>
+            {
+                InstallLocation.Save(ExeDir, target);
+                _runner.InstallDir = target;
+            }, new Progress<(long done, long total)>(p => { if (_busy) Progress(p.done, p.total); }), _cts.Token);
+            Log($"Game folder changed to {target}.");
+            if (warning != null) { Log(warning); ShowLog(true); }
+        }
+        catch (OperationCanceledException) { _busy = false; return; }
+        catch (Exception ex) when (ex is UpdaterException or IOException or UnauthorizedAccessException)
+        {
+            _busy = false;
+            Log("Moving the game failed: " + ex.Message);
+            Status($"Couldn't move the game; it is still in {current}.");
+            _showProgress = false;
+            SetEnabled(_verify, true); SetEnabled(_folder, true); SetEnabled(_play, PatchClient.LoadState(current) != null);
+            ShowLog(true);
+            return;
+        }
+        _busy = false;
+        await RunUpdate(_opts with { SelfUpdate = false }); // quick check at the new place; also reloads the skin from there
     }
 
     public void Status(string text)
@@ -230,28 +407,47 @@ internal sealed class MainForm : Form, IUpdaterUi
         _verify.Bounds = new Rectangle(_bar.Right - P(170), _panel.Top + P(104), P(170), P(40));
         var detailsSize = TextRenderer.MeasureText(DetailsText, _smallFont);
         _details.Bounds = new Rectangle(left - P(4), _panel.Top + P(111), detailsSize.Width + P(8), P(26));
+        PlaceFolderLink();
 
         _logArea = new Rectangle(P(70), P(200), W - P(140), _panel.Top - P(12) - P(200));
         var inset = _theme.LogInset(s);
         _log.Bounds = Rectangle.FromLTRB(_logArea.Left + inset.Left, _logArea.Top + inset.Top, _logArea.Right - inset.Right, _logArea.Bottom - inset.Bottom);
         _log.Font = _logFont;
+
+        // First-run card, in the same place as the log.
+        _card = _logArea;
+        var cl = _card.Left + P(40); var cw = _card.Width - P(80);
+        _cardTitle = new Rectangle(cl, _card.Top + P(22), cw, P(30));
+        _change.Bounds = new Rectangle(cl + cw - P(150), _card.Top + P(62), P(150), P(40));
+        _pathBox = new Rectangle(cl, _card.Top + P(62), cw - P(150) - P(14), P(40));
+        _spaceLine = new Rectangle(cl, _card.Top + P(114), cw, P(24));
+        _noteLine = new Rectangle(cl, _card.Top + P(140), cw, P(24));
         DropBackdrop();
         Invalidate();
     }
 
     private string DetailsText => _log.Visible ? "Hide details ▴" : "Show details ▾";
+    private const string FolderText = "Change install folder";
+
+    private void PlaceFolderLink()
+    {
+        var size = TextRenderer.MeasureText(FolderText, _smallFont);
+        _folder.Bounds = new Rectangle(_details.Bounds.Right + (int)(18 * S), _details.Bounds.Top, size.Width + (int)(8 * S), _details.Bounds.Height);
+    }
 
     private void MakeFonts()
     {
         var s = S;
         string serif = FontInstalled("Palatino Linotype") ? "Palatino Linotype" : FontInstalled("Georgia") ? "Georgia" : FontFamily.GenericSerif.Name;
-        var old = new[] { _titleFont, _statusFont, _buttonFont, _smallButtonFont, _smallFont, _logFont };
+        var old = new[] { _titleFont, _statusFont, _buttonFont, _smallButtonFont, _smallFont, _logFont, _headingFont, _pathFont };
         _titleFont = new Font(serif, 46 * s, FontStyle.Bold, GraphicsUnit.Pixel);
         _statusFont = new Font(serif, 19 * s, FontStyle.Regular, GraphicsUnit.Pixel);
         _buttonFont = new Font(serif, 26 * s, FontStyle.Bold, GraphicsUnit.Pixel);
         _smallButtonFont = new Font(serif, 15 * s, FontStyle.Bold, GraphicsUnit.Pixel);
         _smallFont = new Font("Segoe UI", 12.5f * s, FontStyle.Regular, GraphicsUnit.Pixel);
         _logFont = new Font("Consolas", 12 * s, FontStyle.Regular, GraphicsUnit.Pixel);
+        _headingFont = new Font(serif, 21 * s, FontStyle.Bold, GraphicsUnit.Pixel);
+        _pathFont = new Font("Segoe UI", 16 * s, FontStyle.Regular, GraphicsUnit.Pixel);
         // The log box keeps using its font object, and Font's setter ignores a new font that is Equal (same name
         // and size) to the current one. So after a relayout at the same DPI the box still holds the OLD object:
         // disposing it made the box's window creation throw "Parameter is not valid" (the v0.4.0 crash).
@@ -272,6 +468,8 @@ internal sealed class MainForm : Form, IUpdaterUi
         if (show) { _log.SelectionStart = _log.TextLength; _log.ScrollToCaret(); }
         var size = TextRenderer.MeasureText(DetailsText, _smallFont);
         _details.Bounds.Width = size.Width + (int)(8 * S);
+        PlaceFolderLink();
+        _change.Visible = _setup && !show;
         Invalidate();
     }
 
@@ -388,6 +586,7 @@ internal sealed class MainForm : Form, IUpdaterUi
         var s = S;
 
         if (_log.Visible) _theme.DrawLogFrame(g, _logArea, s);
+        else if (_setup) DrawSetupCard(g, s);
 
         // Status line and percentage.
         var flags = TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding | TextFormatFlags.SingleLine;
@@ -401,15 +600,49 @@ internal sealed class MainForm : Form, IUpdaterUi
 
         _theme.DrawProgress(g, _bar, _showProgress ? _fraction : 0, s);
 
-        DrawButton(g, _play, ButtonKind.Primary, "PLAY", _buttonFont);
-        DrawButton(g, _verify, ButtonKind.Secondary, "Verify files", _smallButtonFont);
+        DrawButton(g, _play, ButtonKind.Primary, _setup ? "INSTALL" : "PLAY", _buttonFont);
+        if (_verify.Visible) DrawButton(g, _verify, ButtonKind.Secondary, "Verify files", _smallButtonFont);
 
         // "Show details" link.
         var linkColor = _hover == _details ? _theme.Title : _theme.Muted;
         TextRenderer.DrawText(g, DetailsText, _smallFont, _details.Bounds, linkColor, TextFormatFlags.VerticalCenter | TextFormatFlags.HorizontalCenter | TextFormatFlags.NoPadding);
+        if (_folder.Visible)
+        {
+            var folderColor = !_folder.Enabled ? Color.FromArgb(120, _theme.Muted) : _hover == _folder ? _theme.Title : _theme.Muted;
+            TextRenderer.DrawText(g, FolderText, _smallFont, _folder.Bounds, folderColor, TextFormatFlags.VerticalCenter | TextFormatFlags.HorizontalCenter | TextFormatFlags.NoPadding);
+        }
 
         DrawWindowButton(g, _minimize, close: false);
         DrawWindowButton(g, _close, close: true);
+    }
+
+    /// <summary>First run: the folder the game will go to, the Change button, and space needed vs free.</summary>
+    private void DrawSetupCard(Graphics g, float s)
+    {
+        _theme.DrawPanel(g, _card, s);
+        var left = TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis;
+        var shade = Color.FromArgb(200, 0, 0, 0);
+        void Label(string t, Font f, Rectangle r, Color c)
+        {
+            TextRenderer.DrawText(g, t, f, Shift(r, 0, (int)Math.Max(1, s)), shade, left);
+            TextRenderer.DrawText(g, t, f, r, c, left);
+        }
+        Label("Install location", _headingFont, _cardTitle, _theme.Title);
+
+        // The path, in a recessed box.
+        using (var box = new SolidBrush(Color.FromArgb(230, _theme.LogBack)))
+            g.FillRectangle(box, _pathBox);
+        using (var edge = new Pen(Color.FromArgb(150, _theme.Accent), Math.Max(1, s)))
+            g.DrawRectangle(edge, _pathBox.X, _pathBox.Y, _pathBox.Width - 1, _pathBox.Height - 1);
+        var pathText = Rectangle.Inflate(_pathBox, -(int)(14 * s), 0);
+        TextRenderer.DrawText(g, _target, _pathFont, pathText, _theme.Text,
+            TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.SingleLine | TextFormatFlags.PathEllipsis);
+
+        DrawButton(g, _change, ButtonKind.Secondary, "Change...", _smallButtonFont);
+
+        Label(SpaceText(), _smallFont, _spaceLine, _theme.Muted);
+        if (_problem != null) Label(_problem, _smallFont, _noteLine, Color.FromArgb(0xF0, 0x7A, 0x5A));
+        else if (_note != null) Label(_note, _smallFont, _noteLine, InstallLocation.HasInstall(_target) ? _theme.Accent : _theme.Muted);
     }
 
     private ButtonState StateOf(Widget w) =>
@@ -462,6 +695,8 @@ internal sealed class MainForm : Form, IUpdaterUi
             if (_hover != null) Invalidate(Rectangle.Inflate(_hover.Bounds, 4, 4));
             _hover = w;
             if (_hover != null) Invalidate(Rectangle.Inflate(_hover.Bounds, 4, 4));
+            if (_hover == _folder) _tip.Show("Game folder: " + _runner.InstallDir, this, _folder.Bounds.Left, _folder.Bounds.Top - (int)(30 * S), 6000);
+            else _tip.Hide(this);
             Cursor = _hover != null ? Cursors.Hand : Cursors.Default;
         }
     }
@@ -565,7 +800,8 @@ internal sealed class MainForm : Form, IUpdaterUi
         {
             DropBackdrop();
             _theme.Dispose();
-            foreach (var f in new[] { _titleFont, _statusFont, _buttonFont, _smallButtonFont, _smallFont, _logFont }) f?.Dispose();
+            _tip.Dispose();
+            foreach (var f in new[] { _titleFont, _statusFont, _buttonFont, _smallButtonFont, _smallFont, _logFont, _headingFont, _pathFont }) f?.Dispose();
         }
         base.Dispose(disposing);
     }

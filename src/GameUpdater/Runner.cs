@@ -16,10 +16,28 @@ internal sealed record RunOptions(bool SelfUpdate, bool SelfUpdateOnly, bool Ver
 internal enum RunOutcome { Ready, Restarting, Failed, NotConfigured }
 
 /// <summary>Self-update, then game update. Shared by the window and --headless mode.</summary>
-internal sealed class Runner(UpdaterConfig config, string exePath, IUpdaterUi ui)
+internal sealed class Runner(UpdaterConfig config, string exePath, IUpdaterUi ui, string installDir)
 {
     public string ExeDir => Path.GetDirectoryName(exePath)!;
-    public string InstallDir => config.ResolveInstallDir(ExeDir);
+    /// <summary>The game folder. The window changes it when the player picks another one.</summary>
+    public string InstallDir { get; set; } = installDir;
+
+    /// <summary>The channel's current version, for showing its size before installing. Null when offline.</summary>
+    public async Task<Manifest?> PeekRemoteAsync(CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(config.ChannelUrl)) return null;
+        try
+        {
+            using var http = Fetcher.CreateHttpClient($"BritanniaReborn/{Signing.CurrentVersion()}");
+            var remote = await new PatchClient(new Fetcher(http), config.PatchKeys()).CheckAsync(new Uri(config.ChannelUrl), ct);
+            return remote.Manifest;
+        }
+        catch (Exception ex) when (ex is UpdaterException or IOException or UnauthorizedAccessException or HttpRequestException)
+        {
+            ui.Log($"Could not check the game size: {ex.Message}");
+            return null;
+        }
+    }
 
     public async Task<RunOutcome> RunAsync(RunOptions o, CancellationToken ct)
     {
@@ -73,6 +91,8 @@ internal sealed class Runner(UpdaterConfig config, string exePath, IUpdaterUi ui
             var remote = await client.CheckAsync(new Uri(config.ChannelUrl), ct);
             ui.Log($"Latest {remote.Manifest.Product} version: {remote.Manifest.Version}");
 
+            ui.Log($"Game folder: {InstallDir}");
+            InstallMover.Recover(InstallDir);
             Directory.CreateDirectory(InstallDir);
             // Progress<T> posts reports; one can arrive after the final status below. Drop those.
             var finished = false;

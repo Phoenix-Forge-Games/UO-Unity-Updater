@@ -33,7 +33,8 @@ The updater and patch tooling for the UO Unity game (`Phoenix-Forge-Games/UO-Uni
 <anywhere>\
   BritanniaReborn.exe        <- the only thing a player downloads
   BritanniaReborn.json       <- optional overrides (channel URL, install folder)
-  Game\                  <- managed by the updater
+  BritanniaReborn.install.json <- the install folder the player chose (or per user, see below)
+  Game\                  <- managed by the updater (default; the player can pick any folder)
     UOClient.exe, UOClient_Data\..., Content\...
     LauncherSkin.pak     <- the launcher's skin, delivered by the private game patch
     .patch\              <- updater state (installed manifest, download cache)
@@ -42,9 +43,23 @@ The updater and patch tooling for the UO Unity game (`Phoenix-Forge-Games/UO-Uni
 Files in `Game\` that aren't in any manifest (settings, saves, the imported UO content database)
 are never touched. Only files the previous version installed are ever deleted.
 
+**Install folder.** On first run (no game installed, no saved choice) the launcher shows where the
+game will go (`Game` next to the launcher), the space it needs and the space free, with **Change...**
+to pick another folder. A non-empty folder gets a `Britannia Reborn` subfolder; a folder that already
+holds the game is reused. The choice is saved in `BritanniaReborn.install.json` next to the launcher,
+or in `%LOCALAPPDATA%\Britannia Reborn\` when the launcher's folder is read-only, and later runs go
+straight there. An `installDir` in `BritanniaReborn.json` (or `GameUpdater.json`) still counts as a choice,
+and so does an existing `Game` folder from older launchers, so current players never see the prompt.
+**Change install folder** (next to Show details) moves the game: one rename on the same drive; across
+drives it parks the old folder, copies, and only then switches, so a failure or a running game leaves
+the install where it was. A move cut off midway is undone on the next start.
+
 GameUpdater command line: `--headless` (no window; output goes to the console),
 `--launch` (start the game when ready), `--verify` (re-hash every file and repair),
-`--no-self-update`, `--log <file>`, `--version`, `--skin <pack|none>`.
+`--no-self-update`, `--log <file>`, `--version`, `--skin <pack|none>`,
+`--install-dir <folder>` (use this folder for this run; not saved, no prompt),
+`--move-install <folder>` (with `--headless`: move the game there and remember it).
+`--headless` never prompts: it uses the saved, configured or default folder.
 
 ## Build and test
 
@@ -68,6 +83,9 @@ The e2e test publishes three synthetic builds to a local HTTP host and checks th
 - GameUpdater 1.0.0 replaces itself with 1.0.1 from a signed feed, restarts, and installs the game.
 - The launcher window opens and draws (`--ui-selftest`) on a fresh install with no skin, with
   `--skin none`, with a garbage or damaged skin pack (built-in look), and with a valid skin.
+- The launcher installs into an `--install-dir` folder (without saving it), goes straight to a saved
+  folder, moves the game with `--move-install` without re-downloading, undoes an interrupted move,
+  and refuses to move (leaving everything in place) while a game file is in use.
 - `patchtool pack-skin` packs a generated skin, reads it back, gives the same bytes every time, and
   leaves nothing readable without decrypting.
 

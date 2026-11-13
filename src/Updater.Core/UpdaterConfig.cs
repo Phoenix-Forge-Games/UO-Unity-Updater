@@ -17,8 +17,9 @@ public sealed class UpdaterConfig
     public string ChannelUrl { get; set; } = Defaults.ChannelUrl;
     /// <summary>URL of the updater's own updater.json.</summary>
     public string UpdaterFeedUrl { get; set; } = Defaults.UpdaterFeedUrl;
-    /// <summary>Game folder, relative to the updater executable or absolute.</summary>
-    public string InstallDir { get; set; } = "Game";
+    /// <summary>Game folder, relative to the updater executable or absolute. Unset means "Game" next to the
+    /// launcher, and the launcher asks the player on first run (see <see cref="InstallLocation"/>).</summary>
+    public string? InstallDir { get; set; }
     public bool SelfUpdate { get; set; } = true;
     /// <summary>Close the updater after starting the game.</summary>
     public bool CloseOnLaunch { get; set; } = true;
@@ -37,7 +38,9 @@ public sealed class UpdaterConfig
         return new UpdaterConfig();
     }
 
-    public string ResolveInstallDir(string exeDir) => Path.GetFullPath(Path.Combine(exeDir, InstallDir));
+    public const string DefaultInstallDir = "Game";
+
+    public string ResolveInstallDir(string exeDir) => Path.GetFullPath(Path.Combine(exeDir, InstallDir ?? DefaultInstallDir));
 
     public List<string> PatchKeys() => [.. Signing.EmbeddedKeys("patch"), .. ExtraPatchKeys];
     public List<string> UpdaterKeys() => [.. Signing.EmbeddedKeys("updater"), .. ExtraUpdaterKeys];
