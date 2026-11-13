@@ -6,8 +6,10 @@ Copy to: UnityClient/Tools/Release/publish-patch.ps1
 
 .DESCRIPTION
   1. Refuses anything that must not ship (same rules as publish-release.ps1).
-  2. Runs `patchtool publish` into the local patch-host mirror. Only new files/chunks are added.
-  3. Uploads the new files with deploy-patches.ps1 (blobs first, channel.json last), unless -NoDeploy.
+  2. Copies the launcher skin (LauncherSkin.pak, made by Updater/tools/launcher-skin/build_skin.py) into the
+     build root, so players' launchers pick it up. Skipped with a warning if it hasn't been built.
+  3. Runs `patchtool publish` into the local patch-host mirror. Only new files/chunks are added.
+  4. Uploads the new files with deploy-patches.ps1 (blobs first, channel.json last), unless -NoDeploy.
 
 .EXAMPLE
   ./Tools/Release/publish-patch.ps1 -Version 0.4.0
@@ -21,6 +23,7 @@ param(
     [string] $Destination = '\\phoenix-server\Patches',        # decided in Updater/docs/hosting.md
     [string] $UpdaterRepo = 'G:\Ultima Online\Updater',
     [string] $Key = "$env:USERPROFILE\.uo-unity-updater\keys\patch.pem",
+    [string] $LauncherSkin = "$env:USERPROFILE\.uo-unity-updater\LauncherSkin.pak",   # 'none' to leave it out
     [switch] $NoDeploy
 )
 $ErrorActionPreference = 'Stop'
@@ -31,6 +34,11 @@ $bad = Get-ChildItem $BuildDir -Recurse -Force | Where-Object {
     $_.Name -match 'DoNotShip|DontShip|ContentKey|\.pdb$|\.fbx$|\.prefab$|\.mat$|\.unitypackage$|\.psd$|\.tga$'
 }
 if ($bad) { throw "Refusing to publish; these must not ship:`n$($bad.FullName -join "`n")" }
+
+if ($LauncherSkin -ne 'none') {
+    if (Test-Path $LauncherSkin) { Copy-Item $LauncherSkin (Join-Path $BuildDir 'LauncherSkin.pak') -Force }
+    else { Write-Warning "No launcher skin at $LauncherSkin; the launcher keeps its built-in look. See Updater/docs/launcher-skin.md." }
+}
 
 # patchtool: use the released one if it's on PATH, otherwise run from the updater repo.
 $pt = Get-Command patchtool -ErrorAction SilentlyContinue
