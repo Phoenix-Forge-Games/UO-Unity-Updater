@@ -66,6 +66,8 @@ The e2e test publishes three synthetic builds to a local HTTP host and checks th
 - A corrupted blob and a tampered `channel.json` are both rejected, and the install is left as it was.
 - `--verify` repairs a damaged file that kept its size and timestamp.
 - GameUpdater 1.0.0 replaces itself with 1.0.1 from a signed feed, restarts, and installs the game.
+- The launcher window opens and draws (`--ui-selftest`) on a fresh install with no skin, with
+  `--skin none`, with a garbage or damaged skin pack (built-in look), and with a valid skin.
 - `patchtool pack-skin` packs a generated skin, reads it back, gives the same bytes every time, and
   leaves nothing readable without decrypting.
 

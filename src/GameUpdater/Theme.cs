@@ -221,7 +221,9 @@ internal sealed class SkinTheme : LauncherTheme
     public static SkinTheme Load(string packFile)
     {
         var files = SkinPack.Open(packFile);
-        var manifest = JsonSerializer.Deserialize<Manifest>(files[SkinPack.ManifestName], new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+        var json = files[SkinPack.ManifestName].AsSpan();
+        if (json.StartsWith((ReadOnlySpan<byte>)[0xEF, 0xBB, 0xBF])) json = json[3..]; // tolerate a UTF-8 BOM (PowerShell writes one)
+        var manifest = JsonSerializer.Deserialize<Manifest>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
                        ?? throw new UpdaterException("skin.json is empty.");
         var t = new SkinTheme(manifest.Name ?? Path.GetFileName(packFile));
         try
