@@ -18,7 +18,8 @@ public static class InstallLocation
     /// <summary>Folder added under a picked folder that already holds other things.</summary>
     public const string DefaultFolderName = "Britannia Reborn";
 
-    public sealed record Resolved(string Dir, bool Chosen, string Source);
+    /// <param name="Missing">The saved folder no longer holds the game (moved, deleted, or its drive is gone).</param>
+    public sealed record Resolved(string Dir, bool Chosen, string Source, bool Missing = false);
 
     public sealed class Saved
     {
@@ -33,12 +34,30 @@ public static class InstallLocation
     {
         if (!string.IsNullOrWhiteSpace(argDir))
             return new(Path.GetFullPath(Path.Combine(exeDir, argDir)), true, "--install-dir");
-        if (LoadSaved(exeDir) is { } saved)
-            return new(saved, true, "saved choice");
         var fromConfig = config.ResolveInstallDir(exeDir);
+        if (LoadSaved(exeDir) is { } saved)
+        {
+            // Checked on every start: the saved folder must still hold the game (or a first download in progress).
+            if (HasInstall(saved) || Directory.Exists(Path.Combine(saved, PathSafety.StateDir)) || Directory.Exists(saved + InstallMover.ParkedSuffix))
+                return new(saved, true, "saved choice");
+            if (FindExisting(exeDir, fromConfig) is { } found) return Remember(exeDir, found);
+            return new(saved, false, "saved choice", Missing: true); // ask again, starting from the saved folder
+        }
         if (config.InstallDir != null) return new(fromConfig, true, UpdaterConfig.FileName);
-        // Launchers before 0.5 installed to "Game" without asking: an install already there counts as chosen.
-        return new(fromConfig, HasInstall(fromConfig), "default");
+        // Launchers before 0.5 installed to "Game" without asking: an install found next to the launcher counts as chosen.
+        if (FindExisting(exeDir, fromConfig) is { } existing) return Remember(exeDir, existing);
+        return new(fromConfig, false, "default");
+    }
+
+    /// <summary>A game install in one of the usual places next to the launcher, or null.</summary>
+    public static string? FindExisting(string exeDir, string defaultDir) =>
+        new[] { defaultDir, Path.Combine(exeDir, DefaultFolderName) }.Select(Path.GetFullPath).FirstOrDefault(HasInstall);
+
+    private static Resolved Remember(string exeDir, string dir)
+    {
+        try { Save(exeDir, dir); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { } // found again next time
+        return new(dir, true, "found");
     }
 
     public static bool HasInstall(string dir) => File.Exists(Path.Combine(dir, PathSafety.StateDir, "installed.json"));
@@ -172,7 +191,7 @@ public static class InstallLocation
 /// </summary>
 public static class InstallMover
 {
-    private const string ParkedSuffix = ".moving";
+    public const string ParkedSuffix = ".moving";
     private const string PartialSuffix = ".partial";
 
     /// <summary>

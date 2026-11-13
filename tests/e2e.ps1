@@ -333,6 +333,16 @@ try {
         if ($text -notmatch "Game folder: $([regex]::Escape($moved))") { Fail "earlier runs are missing from the log file" }
         if ($text -notmatch "Details: System\.IO\.IOException" -or $text -notmatch "   at ") { Fail "the log file lacks the exception type and stack" }
         Write-Host "OK: runs logged to BritanniaReborn.log; the failure gave a reason and full details" -ForegroundColor Green
+
+        Step "Launcher re-checks the saved folder on start and finds a game that moved next to it"
+        # The saved folder lost its game; the game now sits in Game next to the launcher.
+        $found = [IO.Path]::GetFullPath("$loc/Game")
+        Move-Item $moved $found
+        $r = Run-Launcher @()
+        if ($r.Code -ne 0 -or $r.Log -notmatch [regex]::Escape("Game folder: $found")) { Fail "the game next to the launcher was not found" }
+        if ($r.Log -notmatch "Game is up to date") { Fail "the found game was re-downloaded" }
+        if ((Get-Content $saved -Raw | ConvertFrom-Json).installDir -ne $found) { Fail "the found folder was not saved" }
+        Write-Host "OK: missing saved folder detected; the game next to the launcher was found and remembered" -ForegroundColor Green
     }
 
     Write-Host "`nALL E2E CHECKS PASSED" -ForegroundColor Green
