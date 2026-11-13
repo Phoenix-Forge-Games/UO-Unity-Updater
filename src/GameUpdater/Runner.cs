@@ -74,8 +74,11 @@ internal sealed class Runner(UpdaterConfig config, string exePath, IUpdaterUi ui
             ui.Log($"Latest {remote.Manifest.Product} version: {remote.Manifest.Version}");
 
             Directory.CreateDirectory(InstallDir);
+            // Progress<T> posts reports; one can arrive after the final status below. Drop those.
+            var finished = false;
             var progress = new Progress<UpdateProgress>(p =>
             {
+                if (Volatile.Read(ref finished)) return;
                 ui.Status(p.Message);
                 ui.Progress(p.Done, p.Total);
             });
@@ -83,6 +86,7 @@ internal sealed class Runner(UpdaterConfig config, string exePath, IUpdaterUi ui
             if (plan.UpToDate)
             {
                 await client.ApplyAsync(plan, progress, ct); // records state after a verify
+                Volatile.Write(ref finished, true);
                 ui.Status($"Ready to play ({remote.Manifest.Version}).");
                 ui.Log("Game is up to date.");
                 return RunOutcome.Ready;
@@ -91,6 +95,7 @@ internal sealed class Runner(UpdaterConfig config, string exePath, IUpdaterUi ui
             ui.Log($"Updating {plan.InstalledVersion ?? "new install"} -> {remote.Manifest.Version}: {plan.Changed.Count} files to write, " +
                    $"{plan.Deleted.Count} to remove; downloading {PatchPublisher.Fmt(plan.DownloadBytes)}, reusing {PatchPublisher.Fmt(plan.ReusedBytes)} already on disk.");
             var result = await client.ApplyAsync(plan, progress, ct);
+            Volatile.Write(ref finished, true);
             ui.Log($"Updated to {result.Version}. Downloaded {PatchPublisher.Fmt(result.BytesDownloaded)}.");
             ui.Status($"Ready to play ({result.Version}).");
             ui.Progress(1, 1);

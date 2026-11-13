@@ -16,3 +16,6 @@ keys/*
 
 # Local test output
 tests/.work/
+
+# Launcher skins carry licensed art (docs/launcher-skin.md). Never commit one.
+*.pak

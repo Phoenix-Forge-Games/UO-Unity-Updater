@@ -182,6 +182,22 @@ try {
     $out = & $tool sync --channel-url $url --dir $install --pubkey $patchPub --json; $out | Out-Host
     if ($LASTEXITCODE) { Fail "roll-forward sync failed" }
     Assert-SameTree $install $v3 "rolled-forward install (1.2.0)"
+
+    Step "Launcher skin pack (generated data, no art)"
+    $skinDir = "$work/skin"; New-Item -ItemType Directory "$skinDir/img" -Force | Out-Null
+    '{ "name": "e2e", "images": { "panel": { "file": "img/panel.png", "slice": [4, 4, 4, 4] } } }' | Set-Content "$skinDir/skin.json" -Encoding UTF8
+    $png = [byte[]](0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A) + [byte[]](1..2000 | ForEach-Object { $_ % 251 })
+    [IO.File]::WriteAllBytes("$skinDir/img/panel.png", $png)
+    PT pack-skin --dir $skinDir --out "$work/skin-a.pak" | Out-Host
+    PT pack-skin --dir $skinDir --out "$work/skin-b.pak" | Out-Host
+    if ((Get-FileHash "$work/skin-a.pak").Hash -ne (Get-FileHash "$work/skin-b.pak").Hash) { Fail "packing the same skin twice gave different bytes" }
+    $packed = [IO.File]::ReadAllBytes("$work/skin-a.pak")
+    $text = [Text.Encoding]::ASCII.GetString($packed)
+    if ($text.Contains("PNG") -or $text.Contains("skin.json") -or $text.Contains("panel")) { Fail "skin pack contents are readable without decrypting" }
+    New-Item -ItemType Directory "$work/skin-empty" -Force | Out-Null
+    if ((PTExit pack-skin --dir "$work/skin-empty" --out "$work/skin-c.pak") -eq 0) { Fail "pack-skin accepted a folder without skin.json" }
+    Write-Host "OK: skin pack is encrypted, reproducible and readable by the launcher's reader" -ForegroundColor Green
+
     if (-not $SkipSelfUpdate) {
         Step "Self-update: publish GameUpdater 1.0.0 and 1.0.1"
         foreach ($ver in "1.0.0", "1.0.1") {

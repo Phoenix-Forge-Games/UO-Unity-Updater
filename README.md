@@ -20,11 +20,12 @@ The updater and patch tooling for the UO Unity game (`Phoenix-Forge-Games/UO-Uni
 | Path | What |
 |---|---|
 | `src/Updater.Core` | Manifest format, chunker, signing, publisher, patch client, self-updater |
-| `src/GameUpdater` | The player-facing Windows app, the Britannia Reborn launcher (`BritanniaReborn.exe`; `GameUpdater.exe` before v0.3.0): a small window, or `--headless` |
-| `src/PatchTool` | `patchtool` CLI: `publish`, `sync`, `updater-release`, `prune`, `rollback`, `keygen`, `serve` |
+| `src/GameUpdater` | The player-facing Windows app, the Britannia Reborn launcher (`BritanniaReborn.exe`; `GameUpdater.exe` before v0.3.0): a themed window ([skin](docs/launcher-skin.md)), or `--headless` |
+| `src/PatchTool` | `patchtool` CLI: `publish`, `sync`, `updater-release`, `prune`, `rollback`, `keygen`, `pack-skin`, `serve` |
+| `tools/launcher-skin` | Recipe that builds the launcher's private Synty skin (`LauncherSkin.pak`); no art in the repo |
 | `tests/e2e.ps1` | End-to-end test, also run in CI (see below) |
 | `keys/*.pub` | Trusted public keys, compiled into the updater. Private keys are never committed. |
-| `docs/` | [Manifest format](docs/manifest-format.md), [release flow](docs/release-flow.md), [hosting](docs/hosting.md), [Unity integration](docs/unity-integration.md) |
+| `docs/` | [Manifest format](docs/manifest-format.md), [release flow](docs/release-flow.md), [hosting](docs/hosting.md), [Unity integration](docs/unity-integration.md), [launcher skin](docs/launcher-skin.md) |
 
 ## Player layout
 
@@ -34,6 +35,7 @@ The updater and patch tooling for the UO Unity game (`Phoenix-Forge-Games/UO-Uni
   BritanniaReborn.json       <- optional overrides (channel URL, install folder)
   Game\                  <- managed by the updater
     UOClient.exe, UOClient_Data\..., Content\...
+    LauncherSkin.pak     <- the launcher's skin, delivered by the private game patch
     .patch\              <- updater state (installed manifest, download cache)
 ```
 
@@ -42,7 +44,7 @@ are never touched. Only files the previous version installed are ever deleted.
 
 GameUpdater command line: `--headless` (no window; output goes to the console),
 `--launch` (start the game when ready), `--verify` (re-hash every file and repair),
-`--no-self-update`, `--log <file>`, `--version`.
+`--no-self-update`, `--log <file>`, `--version`, `--skin <pack|none>`.
 
 ## Build and test
 
@@ -64,6 +66,8 @@ The e2e test publishes three synthetic builds to a local HTTP host and checks th
 - A corrupted blob and a tampered `channel.json` are both rejected, and the install is left as it was.
 - `--verify` repairs a damaged file that kept its size and timestamp.
 - GameUpdater 1.0.0 replaces itself with 1.0.1 from a signed feed, restarts, and installs the game.
+- `patchtool pack-skin` packs a generated skin, reads it back, gives the same bytes every time, and
+  leaves nothing readable without decrypting.
 
 ## Releases
 

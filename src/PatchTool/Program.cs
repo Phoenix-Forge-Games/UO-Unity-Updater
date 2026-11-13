@@ -26,6 +26,10 @@ patchtool - build, publish and apply incremental game patches
   patchtool rollback --host <dir> --channel <name> --version <x.y.z>
       Point a channel back at an earlier published version (clients then patch back to it).
 
+  patchtool pack-skin --dir <skin folder> --out <LauncherSkin.pak>
+      Pack a launcher skin (skin.json + images) into one encrypted file. Ship it only in the private game
+      patch, at the install root; never commit it or attach it to a public release.
+
   patchtool serve   --root <dir> [--port 8080] [--bind 127.0.0.1]
       Serve a folder over HTTP for local testing.
 
@@ -151,6 +155,17 @@ try
             var bind = IPAddress.Parse(a.Opt("bind") ?? "127.0.0.1");
             a.EnsureAllUsed();
             await StaticServer.RunAsync(root, bind, port, cts.Token);
+            return 0;
+        }
+
+        case "pack-skin":
+        {
+            var a = new Args(rest);
+            var src = a.Req("dir"); var outFile = a.Req("out");
+            a.EnsureAllUsed();
+            SkinPack.Pack(src, outFile);
+            var entries = SkinPack.Open(outFile); // read it back: a pack the launcher can't open must not ship
+            Console.WriteLine($"Wrote {outFile}: {entries.Count} files, {PatchPublisher.Fmt(new FileInfo(outFile).Length)}.");
             return 0;
         }
 
