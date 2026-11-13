@@ -320,6 +320,19 @@ try {
         if (Test-Path "$work/elsewhere/BR") { Fail "refused move left files at the target" }
         if ((Get-Content $saved -Raw | ConvertFrom-Json).installDir -ne $moved) { Fail "refused move changed the saved folder" }
         Write-Host "OK: install folder chosen, remembered, moved, recovered, and protected while in use" -ForegroundColor Green
+
+        Step "Launcher log file: every run is logged, a failure names its cause and keeps full details"
+        # v0.5.0 showed a bare "ERROR:" for a failure without a message, and kept no log file.
+        $blocker = "$work/blocked-by-a-file"; Set-Content $blocker "not a folder"
+        $r = Run-Launcher @("--install-dir", $blocker)
+        if ($r.Code -eq 0) { Fail "update into a path that is a file succeeded" }
+        if ($r.Log -notmatch "ERROR: \S") { Fail "the error line has no reason" }
+        $file = "$loc/BritanniaReborn.log"
+        if ($r.Log -notmatch [regex]::Escape("Full details are in $([IO.Path]::GetFullPath($file))")) { Fail "the error does not point at the log file" }
+        $text = Get-Content $file -Raw -ErrorAction SilentlyContinue
+        if ($text -notmatch "Game folder: $([regex]::Escape($moved))") { Fail "earlier runs are missing from the log file" }
+        if ($text -notmatch "Details: System\.IO\.IOException" -or $text -notmatch "   at ") { Fail "the log file lacks the exception type and stack" }
+        Write-Host "OK: runs logged to BritanniaReborn.log; the failure gave a reason and full details" -ForegroundColor Green
     }
 
     Write-Host "`nALL E2E CHECKS PASSED" -ForegroundColor Green

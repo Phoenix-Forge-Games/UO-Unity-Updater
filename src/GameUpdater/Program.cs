@@ -18,6 +18,7 @@ internal static class Program
             return FinishSelfUpdate(exePath, target: args[1], oldPid: int.Parse(args[2]), passThrough: args[3..], headless, logFile);
 
         SelfUpdater.Cleanup(exePath);
+        if (!args.Contains("--version")) LauncherLog.Open(exeDir);
         var opts = new RunOptions(
             SelfUpdate: !args.Contains("--no-self-update"),
             SelfUpdateOnly: args.Contains("--self-update-only"),
@@ -131,7 +132,8 @@ internal static class Program
         }
         catch (Exception ex) when (ex is UpdaterException or IOException or UnauthorizedAccessException)
         {
-            ui.Log($"ERROR: Moving the game failed; it is still in {from}. {ex.Message}");
+            ui.Log($"ERROR: Moving the game failed; it is still in {from}. {LauncherLog.Describe(ex)}");
+            LauncherLog.Exception(ex);
             return null;
         }
     }
@@ -167,6 +169,7 @@ internal sealed class ConsoleUi(string? logFile) : IUpdaterUi
         lock (_lock)
         {
             Console.WriteLine(text);
+            LauncherLog.Write(text);
             if (logFile != null) File.AppendAllText(logFile, text + Environment.NewLine);
         }
     }
