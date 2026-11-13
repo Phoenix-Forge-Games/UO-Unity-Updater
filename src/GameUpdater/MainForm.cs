@@ -86,6 +86,7 @@ internal sealed class MainForm : Form, IUpdaterUi
         Shown += async (_, _) =>
         {
             Invalidate(); Update(); // repaint everything once the final size is settled, before the update starts
+            if (SelfTest) { RunSelfTest(); return; }
             await RunUpdate(_opts);
         };
         FormClosing += (_, e) =>
@@ -94,6 +95,27 @@ internal sealed class MainForm : Form, IUpdaterUi
                 e.Cancel = true;
             else _cts.Cancel();
         };
+    }
+
+    /// <summary>--ui-selftest: exercise the window without updating anything, then close. Errors propagate.</summary>
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+    public bool SelfTest { get; init; }
+    public string LogText { get; private set; } = "";
+
+    private void RunSelfTest()
+    {
+        // The v0.4.0 crash: a relayout at the same DPI left the log box holding a disposed font.
+        Relayout();
+        Relayout();
+        DeleteObject(_log.Font.ToHfont()); // throws "Parameter is not valid" if the font was disposed
+        ShowLog(true); _log.Refresh(); ShowLog(false);
+        Status("Self-test"); Progress(1, 2);
+        using (var bmp = new Bitmap(ClientSize.Width, ClientSize.Height))
+        using (var g = Graphics.FromImage(bmp))
+            PaintWindow(g); // unguarded, so a drawing bug fails the test
+        Log($"Theme: {_theme.Name}");
+        LogText = _log.Text;
+        BeginInvoke(Close);
     }
 
     // ---- update flow (unchanged behaviour) ----
@@ -168,7 +190,7 @@ internal sealed class MainForm : Form, IUpdaterUi
             var stamp = File.GetLastWriteTimeUtc(SkinPath);
             if (!initial && stamp == _skinStamp && _theme is SkinTheme) return;
             try { next = SkinTheme.Load(SkinPath); _skinStamp = stamp; }
-            catch (Exception ex) when (ex is UpdaterException or IOException or UnauthorizedAccessException or ArgumentException or System.Text.Json.JsonException)
+            catch (Exception ex) when (ex is not OperationCanceledException) // any bad skin: use the built-in look
             {
                 Log($"Launcher skin not used: {ex.Message}");
             }
@@ -223,13 +245,19 @@ internal sealed class MainForm : Form, IUpdaterUi
     {
         var s = S;
         string serif = FontInstalled("Palatino Linotype") ? "Palatino Linotype" : FontInstalled("Georgia") ? "Georgia" : FontFamily.GenericSerif.Name;
-        foreach (var f in new[] { _titleFont, _statusFont, _buttonFont, _smallButtonFont, _smallFont, _logFont }) f?.Dispose();
+        var old = new[] { _titleFont, _statusFont, _buttonFont, _smallButtonFont, _smallFont, _logFont };
         _titleFont = new Font(serif, 46 * s, FontStyle.Bold, GraphicsUnit.Pixel);
         _statusFont = new Font(serif, 19 * s, FontStyle.Regular, GraphicsUnit.Pixel);
         _buttonFont = new Font(serif, 26 * s, FontStyle.Bold, GraphicsUnit.Pixel);
         _smallButtonFont = new Font(serif, 15 * s, FontStyle.Bold, GraphicsUnit.Pixel);
         _smallFont = new Font("Segoe UI", 12.5f * s, FontStyle.Regular, GraphicsUnit.Pixel);
         _logFont = new Font("Consolas", 12 * s, FontStyle.Regular, GraphicsUnit.Pixel);
+        // The log box keeps using its font object, and Font's setter ignores a new font that is Equal (same name
+        // and size) to the current one. So after a relayout at the same DPI the box still holds the OLD object:
+        // disposing it made the box's window creation throw "Parameter is not valid" (the v0.4.0 crash).
+        _log.Font = _logFont;
+        foreach (var f in old)
+            if (f != null && !ReferenceEquals(f, _log.Font)) f.Dispose();
     }
 
     private static bool FontInstalled(string name)
@@ -327,7 +355,34 @@ internal sealed class MainForm : Form, IUpdaterUi
 
     protected override void OnPaint(PaintEventArgs e)
     {
-        var g = e.Graphics;
+        try { PaintWindow(e.Graphics); }
+        catch (Exception ex) when (_theme is SkinTheme)
+        {
+            Log($"Launcher skin failed to draw, using the built-in look: {ex.Message}");
+            UseBuiltInTheme();
+        }
+        catch (Exception ex) when (!_paintErrorLogged)
+        {
+            _paintErrorLogged = true; // keep running; log once rather than once per frame
+            Log("Drawing the window failed: " + ex);
+        }
+        catch (Exception) { }
+    }
+
+    private bool _paintErrorLogged;
+
+    private void UseBuiltInTheme()
+    {
+        var old = _theme;
+        _theme = new LauncherTheme();
+        old.Dispose();
+        _log.BackColor = _theme.LogBack;
+        _log.ForeColor = _theme.LogText;
+        Relayout(); // also drops the cached backdrop and repaints
+    }
+
+    private void PaintWindow(Graphics g)
+    {
         g.DrawImageUnscaled(Backdrop(), 0, 0);
         Quality(g);
         var s = S;
@@ -523,6 +578,7 @@ internal sealed class MainForm : Form, IUpdaterUi
         return i >= 0 && i + 1 < args.Length ? args[i + 1] : null;
     }
 
+    [DllImport("gdi32.dll")] private static extern bool DeleteObject(IntPtr obj);
     [DllImport("dwmapi.dll")] private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int size);
     [DllImport("uxtheme.dll", CharSet = CharSet.Unicode)] private static extern int SetWindowTheme(IntPtr hwnd, string? app, string? idList);
 }

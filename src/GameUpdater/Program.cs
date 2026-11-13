@@ -62,6 +62,23 @@ internal static class Program
         }
 
         ApplicationConfiguration.Initialize();
+        if (args.Contains("--ui-selftest"))
+        {
+            // Errors surface as an exit code and a log line, never as the WinForms error dialog.
+            Application.SetUnhandledExceptionMode(UnhandledExceptionMode.ThrowException);
+            try
+            {
+                using var form = new MainForm(config, exePath, opts, launch) { SelfTest = true };
+                Application.Run(form);
+                if (logFile != null) File.AppendAllText(logFile, "UI SELFTEST OK" + Environment.NewLine + form.LogText);
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                if (logFile != null) File.AppendAllText(logFile, "UI SELFTEST FAILED: " + ex + Environment.NewLine);
+                return 1;
+            }
+        }
         Application.Run(new MainForm(config, exePath, opts, launch));
         return 0;
     }

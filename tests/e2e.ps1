@@ -237,6 +237,35 @@ try {
         if (-not (Select-String -Path $log -Pattern "Ready to play" -Quiet)) { Fail "new updater did not install the game" }
         Assert-SameTree "$client/Game" $v3 "game installed by the self-updated GameUpdater"
         Write-Host "OK: GameUpdater 1.0.0 updated itself to $ver and installed the game" -ForegroundColor Green
+
+        Step "Launcher window opens without a skin, and with a bad one (UI self-test)"
+        # v0.4.0 crashed with a WinForms error dialog on a fresh install (no Game folder, so no skin).
+        $ui = "$work/ui"; New-Item -ItemType Directory $ui | Out-Null
+        Copy-Item "$work/gu-1.0.1/BritanniaReborn.exe" $ui
+        '{ "selfUpdate": false }' | Set-Content "$ui/BritanniaReborn.json" -Encoding UTF8
+        [IO.File]::WriteAllBytes("$ui/garbage.pak", [byte[]](1..500 | ForEach-Object { $_ % 256 }))
+        Add-Type -AssemblyName System.Drawing
+        $okSkin = "$work/skin-ok"; New-Item -ItemType Directory $okSkin | Out-Null
+        $bmp = New-Object Drawing.Bitmap 24, 24; $bmp.Save("$okSkin/panel.png", [Drawing.Imaging.ImageFormat]::Png); $bmp.Dispose()
+        '{ "name": "e2e ok", "images": { "panel": { "file": "panel.png", "slice": [4, 4, 4, 4] } } }' | Set-Content "$okSkin/skin.json" -Encoding UTF8
+        PT pack-skin --dir $okSkin --out "$ui/ok.pak" | Out-Host
+        $cases = @(
+            @{ Name = "fresh install, no skin"; Args = @(); Theme = "built-in" },
+            @{ Name = "--skin none"; Args = @("--skin", "none"); Theme = "built-in" },
+            @{ Name = "garbage skin pack"; Args = @("--skin", "`"$ui/garbage.pak`""); Theme = "built-in" },
+            @{ Name = "skin with a broken image"; Args = @("--skin", "`"$work/skin-a.pak`""); Theme = "built-in" },
+            @{ Name = "valid skin"; Args = @("--skin", "`"$ui/ok.pak`""); Theme = "e2e ok" }
+        )
+        foreach ($c in $cases) {
+            $log = "$ui/selftest-$([guid]::NewGuid().ToString('N').Substring(0,6)).log"
+            $p = Start-Process "$ui/BritanniaReborn.exe" -ArgumentList (@("--ui-selftest", "--log", "`"$log`"") + $c.Args) -PassThru
+            if (-not $p.WaitForExit(60000)) { Stop-Process $p -Force; Fail "UI self-test hung ($($c.Name))" }
+            $text = Get-Content $log -Raw -ErrorAction SilentlyContinue
+            if ($p.ExitCode -ne 0 -or $text -notmatch "UI SELFTEST OK") { $text | Out-Host; Fail "launcher window failed ($($c.Name)), exit $($p.ExitCode)" }
+            if ($text -notmatch "Theme: $([regex]::Escape($c.Theme))") { $text | Out-Host; Fail "expected the '$($c.Theme)' look ($($c.Name))" }
+            Write-Host "OK: window opened and drew with the $($c.Theme) look ($($c.Name))" -ForegroundColor Green
+        }
+        if (Test-Path "$ui/Game") { Fail "UI self-test created a Game folder" }
     }
 
     Write-Host "`nALL E2E CHECKS PASSED" -ForegroundColor Green
