@@ -266,6 +266,60 @@ try {
             Write-Host "OK: window opened and drew with the $($c.Theme) look ($($c.Name))" -ForegroundColor Green
         }
         if (Test-Path "$ui/Game") { Fail "UI self-test created a Game folder" }
+
+        Step "Launcher install folder: --install-dir, saved choice, --move-install, interrupted move, game in use"
+        $loc = "$work/loc"; New-Item -ItemType Directory $loc | Out-Null
+        Copy-Item "$work/gu-1.0.1/BritanniaReborn.exe" $loc
+        @{   # no installDir: the folder comes from the argument / saved choice
+            channelUrl     = $url
+            selfUpdate     = $false
+            extraPatchKeys = @([IO.File]::ReadAllText($patchPub))
+        } | ConvertTo-Json | Set-Content "$loc/BritanniaReborn.json" -Encoding UTF8
+        $saved = "$loc/BritanniaReborn.install.json"
+        function Run-Launcher([string[]]$extra) {
+            $log = "$loc/run-$([guid]::NewGuid().ToString('N').Substring(0,6)).log"
+            $quoted = @("--headless", "--log", "`"$log`"") + ($extra | ForEach-Object { if ($_ -match ' ') { "`"$_`"" } else { $_ } })
+            $p = Start-Process "$loc/BritanniaReborn.exe" -ArgumentList $quoted -PassThru -WindowStyle Hidden
+            if (-not $p.WaitForExit(180000)) { Stop-Process $p -Force; Fail "launcher timed out ($extra)" }
+            Get-Content $log -ErrorAction SilentlyContinue | Out-Host
+            return @{ Code = $p.ExitCode; Log = (Get-Content $log -Raw -ErrorAction SilentlyContinue) }
+        }
+        $custom = [IO.Path]::GetFullPath("$work/custom dir/Britannia Reborn")
+        $r = Run-Launcher @("--install-dir", $custom)
+        if ($r.Code -ne 0) { Fail "install with --install-dir exited $($r.Code)" }
+        Assert-SameTree $custom $v3 "install in --install-dir folder"
+        if (Test-Path "$loc/Game") { Fail "--install-dir still created the default Game folder" }
+        if (Test-Path $saved) { Fail "--install-dir must not be saved as the player's choice" }
+
+        # What the window's Install button writes; later runs must go straight there.
+        @{ installDir = $custom } | ConvertTo-Json | Set-Content $saved -Encoding UTF8
+        $r = Run-Launcher @()
+        if ($r.Code -ne 0 -or $r.Log -notmatch [regex]::Escape("Game folder: $custom")) { Fail "saved install folder was not used" }
+        if ($r.Log -notmatch "Game is up to date") { Fail "saved install folder was re-downloaded" }
+        if (Test-Path "$loc/Game") { Fail "default Game folder created despite a saved choice" }
+
+        $moved = [IO.Path]::GetFullPath("$work/moved/BR")
+        $r = Run-Launcher @("--move-install", $moved)
+        if ($r.Code -ne 0) { Fail "--move-install exited $($r.Code)" }
+        Assert-SameTree $moved $v3 "moved install"
+        if (Test-Path $custom) { Fail "old install folder still exists after the move" }
+        if ((Get-Content $saved -Raw | ConvertFrom-Json).installDir -ne $moved) { Fail "move did not save the new folder" }
+        if ($r.Log -notmatch "Game is up to date") { Fail "moved install was not recognised (files re-downloaded)" }
+
+        # A move cut off after parking the old folder: the next start must put it back.
+        Rename-Item $moved "BR.moving"
+        $r = Run-Launcher @()
+        if ($r.Code -ne 0 -or -not (Test-Path "$moved/.patch/installed.json")) { Fail "interrupted move was not recovered" }
+        Assert-SameTree $moved $v3 "install recovered after an interrupted move"
+
+        # Game running (a file held open): the move must refuse and leave everything where it was.
+        $lock = [IO.File]::Open("$moved/Game.exe", 'Open', 'Read', 'None')
+        try { $r = Run-Launcher @("--move-install", "$work/elsewhere/BR") } finally { $lock.Dispose() }
+        if ($r.Code -eq 0) { Fail "--move-install succeeded while the game was in use" }
+        Assert-SameTree $moved $v3 "install left intact after a refused move"
+        if (Test-Path "$work/elsewhere/BR") { Fail "refused move left files at the target" }
+        if ((Get-Content $saved -Raw | ConvertFrom-Json).installDir -ne $moved) { Fail "refused move changed the saved folder" }
+        Write-Host "OK: install folder chosen, remembered, moved, recovered, and protected while in use" -ForegroundColor Green
     }
 
     Write-Host "`nALL E2E CHECKS PASSED" -ForegroundColor Green

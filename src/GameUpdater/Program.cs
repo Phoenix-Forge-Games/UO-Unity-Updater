@@ -49,13 +49,22 @@ internal static class Program
             return 0;
         }
 
+        var location = InstallLocation.Resolve(config, exeDir, ArgValue(args, "--install-dir"));
+
         if (headless)
         {
             AttachConsole(-1);
             var ui = new ConsoleUi(logFile);
-            var runner = new Runner(config, exePath, ui);
+            // No prompts here: the saved, configured or default folder (or --install-dir) is used as is.
+            var runner = new Runner(config, exePath, ui, location.Dir);
             using var cts = new CancellationTokenSource();
             Console.CancelKeyPress += (_, e) => { e.Cancel = true; cts.Cancel(); };
+            if (ArgValue(args, "--move-install") is { } moveTo)
+            {
+                var moved = MoveInstall(exeDir, location.Dir, Path.GetFullPath(Path.Combine(exeDir, moveTo)), ui, cts.Token);
+                if (moved == null) return 1;
+                runner.InstallDir = moved;
+            }
             var outcome = runner.RunAsync(opts, cts.Token).GetAwaiter().GetResult();
             if (outcome == RunOutcome.Ready && launch && !opts.SelfUpdateOnly) runner.Launch();
             return outcome switch { RunOutcome.Ready or RunOutcome.Restarting => 0, RunOutcome.NotConfigured => 3, _ => 1 };
@@ -68,7 +77,7 @@ internal static class Program
             Application.SetUnhandledExceptionMode(UnhandledExceptionMode.ThrowException);
             try
             {
-                using var form = new MainForm(config, exePath, opts, launch) { SelfTest = true };
+                using var form = new MainForm(config, exePath, opts, launch, location) { SelfTest = true };
                 Application.Run(form);
                 if (logFile != null) File.AppendAllText(logFile, "UI SELFTEST OK" + Environment.NewLine + form.LogText);
                 return 0;
@@ -79,7 +88,7 @@ internal static class Program
                 return 1;
             }
         }
-        Application.Run(new MainForm(config, exePath, opts, launch));
+        Application.Run(new MainForm(config, exePath, opts, launch, location));
         return 0;
     }
 
@@ -100,6 +109,31 @@ internal static class Program
         if (error != null) psi.ArgumentList.Add("--no-self-update"); // don't loop on a failing update
         System.Diagnostics.Process.Start(psi);
         return error == null ? 0 : 1;
+    }
+
+    /// <summary>--headless --move-install: moves the game (or switches to a copy already there) and saves the choice.</summary>
+    private static string? MoveInstall(string exeDir, string from, string to, ConsoleUi ui, CancellationToken ct)
+    {
+        if (InstallLocation.Problem(to, exeDir) is { } problem) { ui.Log("ERROR: " + problem); return null; }
+        try
+        {
+            if (InstallLocation.HasInstall(to))
+            {
+                InstallLocation.Save(exeDir, to);
+                ui.Log($"Using the game already in {to}; {from} is left as it is.");
+                return to;
+            }
+            ui.Log($"Moving the game from {from} to {to}...");
+            var warning = InstallMover.MoveAsync(from, to, () => InstallLocation.Save(exeDir, to), null, ct).GetAwaiter().GetResult();
+            if (warning != null) ui.Log(warning);
+            ui.Log($"Game folder is now {to}.");
+            return to;
+        }
+        catch (Exception ex) when (ex is UpdaterException or IOException or UnauthorizedAccessException)
+        {
+            ui.Log($"ERROR: Moving the game failed; it is still in {from}. {ex.Message}");
+            return null;
+        }
     }
 
     private static string? ArgValue(string[] args, string name)

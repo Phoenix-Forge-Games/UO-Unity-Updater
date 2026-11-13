@@ -3,7 +3,8 @@
 The launcher window (`src/GameUpdater/MainForm.cs`, `Theme.cs`) has two looks:
 
 - **Built-in:** gold-on-dark, drawn entirely in code. This is what the public `BritanniaReborn.exe` carries,
-  and what a player sees before the game is installed or if the skin is missing or damaged.
+  and what a player sees before the game is installed (including the first-run install-folder screen) or if
+  the skin is missing or damaged.
 - **Skinned:** art from Synty's *Interface - Fantasy* packs (Menus, Screens and Warrior HUD, kitbashed), so the
   launcher matches the game's UI. Used whenever `<install>\LauncherSkin.pak` exists.
 
