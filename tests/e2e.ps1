@@ -1,4 +1,4 @@
-﻿<#
+<#
 End-to-end test of publishing and patching, run locally and in CI.
 
  1. Publishes two synthetic game builds (v1, v2) to a local patch host and serves it over HTTP.
@@ -191,20 +191,20 @@ try {
             if ($LASTEXITCODE) { Fail "GameUpdater $ver publish failed" }
         }
         $feedDir = "$hostDir/updater"; New-Item -ItemType Directory $feedDir -Force | Out-Null
-        Copy-Item "$work/gu-1.0.1/GameUpdater.exe" "$feedDir/GameUpdater.exe"
-        PT updater-release --exe "$feedDir/GameUpdater.exe" --version 1.0.1 --url GameUpdater.exe --key "$work/keys/updater.pem" --out $feedDir | Out-Host
+        Copy-Item "$work/gu-1.0.1/BritanniaReborn.exe" "$feedDir/BritanniaReborn.exe"
+        PT updater-release --exe "$feedDir/BritanniaReborn.exe" --version 1.0.1 --url BritanniaReborn.exe --key "$work/keys/updater.pem" --out $feedDir | Out-Host
 
         $client = "$work/client"; New-Item -ItemType Directory $client | Out-Null
-        Copy-Item "$work/gu-1.0.0/GameUpdater.exe" $client
+        Copy-Item "$work/gu-1.0.0/BritanniaReborn.exe" $client
         @{
             channelUrl     = $url
             updaterFeedUrl = "http://127.0.0.1:$Port/updater/updater.json"
             installDir     = "Game"
             extraPatchKeys = @([IO.File]::ReadAllText($patchPub))
             extraUpdaterKeys = @([IO.File]::ReadAllText("$work/keys/updater.pub"))
-        } | ConvertTo-Json | Set-Content "$client/GameUpdater.json" -Encoding UTF8
+        } | ConvertTo-Json | Set-Content "$client/BritanniaReborn.json" -Encoding UTF8
         $log = "$client/run.log"
-        $p = Start-Process "$client/GameUpdater.exe" -ArgumentList "--headless","--log","`"$log`"" -PassThru -WindowStyle Hidden
+        $p = Start-Process "$client/BritanniaReborn.exe" -ArgumentList "--headless","--log","`"$log`"" -PassThru -WindowStyle Hidden
         $p.WaitForExit(120000) | Out-Null
         # The old process exits after starting the new one; wait for the new one to finish the game update.
         $deadline = (Get-Date).AddMinutes(3)
@@ -214,10 +214,10 @@ try {
         }
         Get-Content $log | Out-Host
         Start-Sleep -Seconds 2
-        $ver = (Get-Item "$client/GameUpdater.exe").VersionInfo.ProductVersion
+        $ver = (Get-Item "$client/BritanniaReborn.exe").VersionInfo.ProductVersion
         if ($ver -notlike "1.0.1*") { Fail "updater did not replace itself (version $ver)" }
-        if (Test-Path "$client/GameUpdater.update.exe") { Fail "staged updater executable was not cleaned up" }
-        if (-not (Select-String -Path $log -Pattern "GameUpdater 1.0.1" -Quiet)) { Fail "new updater did not run after self-update" }
+        if (Test-Path "$client/BritanniaReborn.update.exe") { Fail "staged updater executable was not cleaned up" }
+        if (-not (Select-String -Path $log -Pattern "Britannia Reborn launcher 1.0.1" -Quiet)) { Fail "new updater did not run after self-update" }
         if (-not (Select-String -Path $log -Pattern "Ready to play" -Quiet)) { Fail "new updater did not install the game" }
         Assert-SameTree "$client/Game" $v3 "game installed by the self-updated GameUpdater"
         Write-Host "OK: GameUpdater 1.0.0 updated itself to $ver and installed the game" -ForegroundColor Green

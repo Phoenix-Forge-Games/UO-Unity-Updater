@@ -4,7 +4,7 @@ There are two separate things to release:
 
 | What | Where it's hosted | Signed with | How it's released |
 |---|---|---|---|
-| **GameUpdater.exe** (this repo) | GitHub Releases on `Phoenix-Forge-Games/UO-Unity-Updater` | `updater` key (GitHub secret `UPDATER_SIGNING_KEY`) | push a `vX.Y.Z` tag |
+| **BritanniaReborn.exe** (this repo) | GitHub Releases on `Phoenix-Forge-Games/UO-Unity-Updater` | `updater` key (GitHub secret `UPDATER_SIGNING_KEY`) | push a `vX.Y.Z` tag |
 | **Game patches** (player build + Addressables content) | phoenix-server ([hosting.md](hosting.md)) | `patch` key (on the build PC only) | `patchtool publish`, then upload |
 
 ## Keys
@@ -48,7 +48,7 @@ To rotate a key:
 
 3. `release.yml` then does the following:
    - Runs the e2e test.
-   - Publishes `GameUpdater.exe` as a self-contained single exe, with the version taken from the tag.
+   - Publishes `BritanniaReborn.exe` as a self-contained single exe, with the version taken from the tag.
    - Publishes `patchtool` for win-x64 and linux-x64.
    - Writes `updater.json` (version, absolute download URL, SHA-256, size) and signs it with
      `UPDATER_SIGNING_KEY`.
@@ -93,7 +93,7 @@ overwrite one unless you pass `--force`.
 A channel is a folder name, such as `live`, `test` or `server-live`. Blobs are shared between
 channels, so promoting a build that was already published to `test` uploads almost nothing new.
 To promote, publish the same build folder to `live`. To point a player at a channel, set
-`channelUrl` in their `GameUpdater.json`.
+`channelUrl` in their `BritanniaReborn.json`.
 
 ### Rolling back
 

@@ -24,7 +24,7 @@ internal sealed class MainForm : Form, IUpdaterUi
         _autoLaunch = autoLaunch;
         _runner = new Runner(config, exePath, this);
 
-        Text = $"{config.GameName} Updater {Signing.CurrentVersion()}";
+        Text = $"{config.GameName} Launcher {Signing.CurrentVersion()}";
         ClientSize = new Size(640, 380);
         MinimumSize = new Size(480, 300);
         StartPosition = FormStartPosition.CenterScreen;

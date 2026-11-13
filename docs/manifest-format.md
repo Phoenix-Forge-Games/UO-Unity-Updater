@@ -41,7 +41,7 @@ One line: `<keyId> <base64 signature>`.
   `channel.json` or `updater.json`.
 - `keyId` is the first 16 hex characters of the SHA-256 of the public key's SubjectPublicKeyInfo.
 - Clients accept only keys compiled in from `keys/patch*.pub` (game channels) or
-  `keys/updater*.pub` (the updater feed), plus any extra keys in `GameUpdater.json`.
+  `keys/updater*.pub` (the updater feed), plus any extra keys in `BritanniaReborn.json`.
 - The signature covers `manifestSha256`, and the manifest covers every blob hash, so one signature
   check protects the whole version.
 
@@ -115,7 +115,7 @@ An interrupted download resumes from the cache: blobs already fetched are hash-c
 ## updater.json (GitHub release asset)
 
 ```json
-{ "format": 1, "version": "1.2.0", "url": "https://github.com/…/releases/download/v1.2.0/GameUpdater.exe",
+{ "format": 1, "version": "1.2.0", "url": "https://github.com/…/releases/download/v1.2.0/BritanniaReborn.exe",
   "sha256": "…", "size": 51626722, "notes": null }
 ```
 
