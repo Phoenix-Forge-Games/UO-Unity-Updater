@@ -49,7 +49,11 @@ game will go (`Game` next to the launcher), the space it needs and the space fre
 to pick another folder. A non-empty folder gets a `Britannia Reborn` subfolder; a folder that already
 holds the game is reused. The choice is saved in `BritanniaReborn.install.json` next to the launcher,
 or in `%LOCALAPPDATA%\Britannia Reborn\` when the launcher's folder is read-only, and later runs go
-straight there. An `installDir` in `BritanniaReborn.json` (or `GameUpdater.json`) still counts as a choice,
+straight there. Every start checks that the saved folder still holds the game; if it doesn't (moved,
+deleted, drive unplugged), a game in `Game` or `Britannia Reborn` next to the launcher is used and
+remembered, otherwise the first-run screen comes back with a note. The button reads **Install** for a
+new install and **Update** when the folder already holds the game, and after a failed update it
+becomes **Update** (or **Install**) to try again. An `installDir` in `BritanniaReborn.json` (or `GameUpdater.json`) still counts as a choice,
 and so does an existing `Game` folder from older launchers, so current players never see the prompt.
 **Change install folder** (next to Show details) moves the game: one rename on the same drive; across
 drives it parks the old folder, copies, and only then switches, so a failure or a running game leaves
@@ -93,6 +97,7 @@ The e2e test publishes three synthetic builds to a local HTTP host and checks th
 - The launcher installs into an `--install-dir` folder (without saving it), goes straight to a saved
   folder, moves the game with `--move-install` without re-downloading, undoes an interrupted move,
   and refuses to move (leaving everything in place) while a game file is in use.
+- When the saved folder no longer holds the game, a game next to the launcher is found and saved.
 - Every launcher run is written to `BritanniaReborn.log`, and a failed update prints its reason and
   the log's path, with the full exception in the file.
 - `patchtool pack-skin` packs a generated skin, reads it back, gives the same bytes every time, and

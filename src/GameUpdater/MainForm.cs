@@ -61,6 +61,10 @@ internal sealed class MainForm : Form, IUpdaterUi
     private long? _need;
     private bool _sizing;
     private string? _problem, _note;
+    private bool _targetHasGame;
+    private readonly string? _missing; // the saved folder, when the game is no longer in it
+    // After a failed update the main button retries it instead of playing.
+    private bool _retry;
     private Rectangle _card, _pathBox, _spaceLine, _noteLine, _cardTitle;
 
     private float S => DeviceDpi / 96f;
@@ -77,6 +81,7 @@ internal sealed class MainForm : Form, IUpdaterUi
         _widgets = [_play, _verify, _details, _folder, _change, _minimize, _close];
         _target = location.Dir;
         _setup = !location.Chosen && !opts.SelfUpdateOnly;
+        _missing = location.Missing ? location.Dir : null;
         _change.Visible = _setup;
         _folder.Visible = !_setup;
         _verify.Visible = !_setup;
@@ -144,6 +149,7 @@ internal sealed class MainForm : Form, IUpdaterUi
     private async Task RunUpdate(RunOptions o)
     {
         _busy = true;
+        _retry = false;
         SetEnabled(_play, false); SetEnabled(_verify, false); SetEnabled(_folder, false);
         _cts = new CancellationTokenSource();
         RunOutcome outcome;
@@ -162,7 +168,8 @@ internal sealed class MainForm : Form, IUpdaterUi
         if (outcome == RunOutcome.Failed) ShowLog(true);
         _showProgress = outcome == RunOutcome.Ready && _fraction > 0;
         SetEnabled(_verify, outcome != RunOutcome.NotConfigured);
-        SetEnabled(_play, outcome == RunOutcome.Ready);
+        _retry = outcome == RunOutcome.Failed;
+        SetEnabled(_play, outcome == RunOutcome.Ready || _retry);
         SetEnabled(_folder, true);
         Invalidate();
         if (outcome == RunOutcome.Ready && _autoLaunch) Play();
@@ -172,6 +179,7 @@ internal sealed class MainForm : Form, IUpdaterUi
     {
         if (!_play.Enabled) return;
         if (_setup) { _ = Install(); return; }
+        if (_retry) { _ = RunUpdate(_opts with { SelfUpdate = false }); return; }
         if (_runner.Launch() && _config.CloseOnLaunch) Close();
     }
 
@@ -196,7 +204,6 @@ internal sealed class MainForm : Form, IUpdaterUi
         catch (OperationCanceledException) { return; }
         finally { _busy = false; _sizing = false; }
         if (!_setup) return;
-        Status("Choose a folder for the game, then press Install.");
         RefreshTarget();
     }
 
@@ -207,10 +214,14 @@ internal sealed class MainForm : Form, IUpdaterUi
         var free = InstallLocation.FreeSpace(_target);
         if (_problem == null && _need is { } need && free is { } f && f < need)
             _problem = $"Not enough space on {DriveName(_target)}: needs {PatchPublisher.Fmt(need)}, {PatchPublisher.Fmt(f)} free.";
-        if (_problem == null && InstallLocation.HasInstall(_target))
+        _targetHasGame = InstallLocation.HasInstall(_target);
+        if (_problem == null && _targetHasGame)
             _note = "The game is already here. It will be checked and brought up to date.";
+        else if (_problem == null && _missing != null && SamePath(_target, _missing))
+            _note = "The game is no longer in this folder (moved or deleted?). Press Install to download it again, or Change... to point at it.";
         else if (_problem == null)
             _note = "The launcher remembers this folder. You can move the game later.";
+        if (!_busy) Status(_targetHasGame ? "Game found. Press Update to bring it up to date." : "Choose a folder for the game, then press Install.");
         SetEnabled(_play, _problem == null && !_busy);
         Invalidate();
     }
@@ -221,6 +232,15 @@ internal sealed class MainForm : Form, IUpdaterUi
         var need = _need is { } n ? $"Needs about {PatchPublisher.Fmt(n)}" : _sizing ? "Checking the size of the game..." : "Size unknown (are you offline?)";
         return free is { } f ? $"{need}   \u00b7   {PatchPublisher.Fmt(f)} free on {DriveName(_target)}" : need;
     }
+
+    private static bool SamePath(string a, string b) =>
+        string.Equals(Path.GetFullPath(a).TrimEnd('\\'), Path.GetFullPath(b).TrimEnd('\\'), StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>INSTALL for a new install, UPDATE when the game is already there (or a failed update can be retried), else PLAY.</summary>
+    private string PlayLabel =>
+        _setup ? (_targetHasGame ? "UPDATE" : "INSTALL")
+        : _retry ? (InstallLocation.HasInstall(_runner.InstallDir) ? "UPDATE" : "INSTALL")
+        : "PLAY";
 
     private static string DriveName(string dir) => (Path.GetPathRoot(Path.GetFullPath(dir)) ?? dir).TrimEnd('\\');
 
@@ -602,7 +622,7 @@ internal sealed class MainForm : Form, IUpdaterUi
 
         _theme.DrawProgress(g, _bar, _showProgress ? _fraction : 0, s);
 
-        DrawButton(g, _play, ButtonKind.Primary, _setup ? "INSTALL" : "PLAY", _buttonFont);
+        DrawButton(g, _play, ButtonKind.Primary, PlayLabel, _buttonFont);
         if (_verify.Visible) DrawButton(g, _verify, ButtonKind.Secondary, "Verify files", _smallButtonFont);
 
         // "Show details" link.
