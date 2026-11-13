@@ -34,7 +34,8 @@ internal sealed class Runner(UpdaterConfig config, string exePath, IUpdaterUi ui
         }
         catch (Exception ex) when (ex is UpdaterException or IOException or UnauthorizedAccessException or HttpRequestException)
         {
-            ui.Log($"Could not check the game size: {ex.Message}");
+            ui.Log($"Could not check the game size: {LauncherLog.Describe(ex)}");
+            LauncherLog.Exception(ex);
             return null;
         }
     }
@@ -71,7 +72,8 @@ internal sealed class Runner(UpdaterConfig config, string exePath, IUpdaterUi ui
                 catch (Exception ex) when (ex is UpdaterException or IOException or UnauthorizedAccessException)
                 {
                     // A broken feed must never block playing: carry on with the current updater.
-                    ui.Log($"Updater self-update check failed: {ex.Message}");
+                    ui.Log($"Updater self-update check failed: {LauncherLog.Describe(ex)}");
+                    LauncherLog.Exception(ex);
                 }
             }
         }
@@ -125,9 +127,17 @@ internal sealed class Runner(UpdaterConfig config, string exePath, IUpdaterUi ui
         catch (Exception ex) when (ex is UpdaterException or IOException or UnauthorizedAccessException)
         {
             ui.Status("Update failed.");
-            ui.Log("ERROR: " + ex.Message);
+            ReportError(ex);
             return RunOutcome.Failed;
         }
+    }
+
+    /// <summary>The error in one readable line, its full details in the log file, and where that file is.</summary>
+    public void ReportError(Exception ex)
+    {
+        ui.Log("ERROR: " + LauncherLog.Describe(ex));
+        LauncherLog.Exception(ex);
+        if (LauncherLog.Path != null) ui.Log($"Full details are in {LauncherLog.Path}");
     }
 
     /// <summary>Starts the installed game. Returns false if there is nothing to launch.</summary>

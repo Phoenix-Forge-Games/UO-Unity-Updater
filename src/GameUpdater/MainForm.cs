@@ -151,7 +151,7 @@ internal sealed class MainForm : Form, IUpdaterUi
         catch (OperationCanceledException) { return; }
         catch (Exception ex)
         {
-            Log("ERROR: " + ex);
+            _runner.ReportError(ex);
             Status("Update failed.");
             outcome = RunOutcome.Failed;
         }
@@ -318,7 +318,8 @@ internal sealed class MainForm : Form, IUpdaterUi
         catch (Exception ex) when (ex is UpdaterException or IOException or UnauthorizedAccessException)
         {
             _busy = false;
-            Log("Moving the game failed: " + ex.Message);
+            Log("Moving the game failed: " + LauncherLog.Describe(ex));
+            LauncherLog.Exception(ex);
             Status($"Couldn't move the game; it is still in {current}.");
             _showProgress = false;
             SetEnabled(_verify, true); SetEnabled(_folder, true); SetEnabled(_play, PatchClient.LoadState(current) != null);
@@ -348,6 +349,7 @@ internal sealed class MainForm : Form, IUpdaterUi
     {
         if (InvokeRequired) { BeginInvoke(() => Log(text)); return; }
         _log.AppendText($"[{DateTime.Now:HH:mm:ss}] {text}{Environment.NewLine}");
+        LauncherLog.Write(text);
     }
 
     // ---- skin ----

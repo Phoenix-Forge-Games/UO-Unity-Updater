@@ -34,6 +34,7 @@ The updater and patch tooling for the UO Unity game (`Phoenix-Forge-Games/UO-Uni
   BritanniaReborn.exe        <- the only thing a player downloads
   BritanniaReborn.json       <- optional overrides (channel URL, install folder)
   BritanniaReborn.install.json <- the install folder the player chose (or per user, see below)
+  BritanniaReborn.log        <- the launcher's log (or per user, like the install choice)
   Game\                  <- managed by the updater (default; the player can pick any folder)
     UOClient.exe, UOClient_Data\..., Content\...
     LauncherSkin.pak     <- the launcher's skin, delivered by the private game patch
@@ -53,6 +54,12 @@ and so does an existing `Game` folder from older launchers, so current players n
 **Change install folder** (next to Show details) moves the game: one rename on the same drive; across
 drives it parks the old folder, copies, and only then switches, so a failure or a running game leaves
 the install where it was. A move cut off midway is undone on the next start.
+
+**Log file.** Every run appends what the details box shows to `BritanniaReborn.log` next to the
+launcher (or `%LOCALAPPDATA%\Britannia Reborn\BritanniaReborn.log` when that folder is read-only).
+A failure shows its reason in one line, never a bare `ERROR:`, and writes the full exception (type,
+inner causes, stack) to the log, whose path the launcher prints. Past 1 MB the log starts over and
+the previous one is kept as `BritanniaReborn.old.log`. Ask players with a failed update for this file.
 
 GameUpdater command line: `--headless` (no window; output goes to the console),
 `--launch` (start the game when ready), `--verify` (re-hash every file and repair),
@@ -86,6 +93,8 @@ The e2e test publishes three synthetic builds to a local HTTP host and checks th
 - The launcher installs into an `--install-dir` folder (without saving it), goes straight to a saved
   folder, moves the game with `--move-install` without re-downloading, undoes an interrupted move,
   and refuses to move (leaving everything in place) while a game file is in use.
+- Every launcher run is written to `BritanniaReborn.log`, and a failed update prints its reason and
+  the log's path, with the full exception in the file.
 - `patchtool pack-skin` packs a generated skin, reads it back, gives the same bytes every time, and
   leaves nothing readable without decrypting.
 
